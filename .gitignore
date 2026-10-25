@@ -4,6 +4,7 @@ model_viewer
 *.a
 !Lib/raylib/lib/libraylib.a
 *.so
+!Lib/raylib/lib/libX11.so
 build/
 
 # IDE / Editor files

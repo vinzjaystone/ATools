@@ -1,6 +1,6 @@
 CXX ?= g++
 CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra -Wno-unused-parameter -Wno-unused-function -Wno-missing-field-initializers -Wno-stringop-truncation -Wno-class-memaccess -Isrc -ILib/raylib/include
-LDFLAGS ?= Lib/raylib/lib/libraylib.a -lm -lpthread -ldl -lrt
+LDFLAGS ?= -LLib/raylib/lib Lib/raylib/lib/libraylib.a -lX11 -lm -lpthread -ldl -lrt
 
 TARGET = model_viewer
 

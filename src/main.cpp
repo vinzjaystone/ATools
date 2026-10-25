@@ -19,6 +19,12 @@ int main(int argc, char* argv[])
 	// Configure Window flags
 	SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT);
 	InitWindow(1360, 840, "Flyff .o3d Model Viewer & Composite Editor");
+	if (!IsWindowReady())
+	{
+		std::cerr << "Error: Failed to initialize raylib graphical window." << std::endl;
+		std::cerr << "Please ensure an X11 or Wayland display server is running (e.g. DISPLAY is set)." << std::endl;
+		return 1;
+	}
 	SetWindowMinSize(960, 600);
 	SetTargetFPS(60);
 
