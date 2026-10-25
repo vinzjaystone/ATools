@@ -123,6 +123,8 @@ public:
 	void SyncBones();
 	Bounds GetCombinedBounds() const;
 
+	bool ExportToGLTF(const std::string& filepath, bool exportAllAnimations = true) const;
+
 	// Helper to extract file name from path
 	static std::string ExtractFileName(const std::string& path);
 

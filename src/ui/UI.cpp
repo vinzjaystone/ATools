@@ -141,6 +141,11 @@ void UserInterface::OpenFileDialog(EFileDialogTarget target)
 	m_fileDialog.scrollIndex = 0;
 	m_fileDialog.selectedFile = "";
 
+	if (target == DIALOG_EXPORT_GLTF)
+	{
+		m_fileDialog.selectedFile = "model_export.glb";
+	}
+
 	if (m_fileDialog.currentPath.empty())
 		m_fileDialog.currentPath = "./";
 
@@ -178,6 +183,8 @@ void UserInterface::_refreshDirectoryContents()
 					accept = (ext == ".mot" || ext == ".ani" || ext == ".mo3");
 				else if (m_fileDialog.target == DIALOG_OPEN_SKELETON)
 					accept = (ext == ".chr" || ext == ".bon");
+				else if (m_fileDialog.target == DIALOG_EXPORT_GLTF)
+					accept = (ext == ".glb" || ext == ".gltf");
 				else if (m_fileDialog.target == DIALOG_SELECT_FOLDER)
 					accept = false;
 
@@ -316,6 +323,15 @@ void UserInterface::_drawTopBar(SceneManager& scene, OrbitCamera& camera, Render
 		OpenFileDialog(DIALOG_OPEN_SKELETON);
 	}
 	x += 86.0f;
+
+	if (GuiButton(Rectangle{ x, y, 92, btnHeight }, "#07# Export glTF"))
+	{
+		if (scene.GetBaseModel())
+			OpenFileDialog(DIALOG_EXPORT_GLTF);
+		else
+			ShowStatusMessage("No model loaded to export.", 3.0f, true);
+	}
+	x += 98.0f;
 
 	// Separator
 	DrawLine((int)x + 4, 8, (int)x + 4, 36, Color{ 60, 65, 78, 255 });
@@ -1234,72 +1250,125 @@ void UserInterface::_drawBottomBar(SceneManager& scene, float deltaTime)
 	         (int)(m_bottomBarRect.x + m_bottomBarRect.width), (int)m_bottomBarRect.y,
 	         Color{ 48, 52, 62, 255 });
 
-	float x = m_bottomBarRect.x + 10.0f;
+	float leftX = m_bottomBarRect.x + 10.0f;
 	float y = m_bottomBarRect.y + 10.0f;
 	float h = 28.0f;
 
 	// Rewind to first frame
-	if (GuiButton(Rectangle{ x, y, 28, h }, "#129#"))
+	if (GuiButton(Rectangle{ leftX, y, 28, h }, "#129#"))
 	{
 		scene.SetCurrentFrame(0.0f);
 	}
-	x += 32.0f;
+	leftX += 32.0f;
 
 	// Step backward 1 frame
-	if (GuiButton(Rectangle{ x, y, 28, h }, "#118#"))
+	if (GuiButton(Rectangle{ leftX, y, 28, h }, "#118#"))
 	{
 		scene.StepFrame(-1);
 	}
-	x += 32.0f;
+	leftX += 32.0f;
 
 	// Play / Pause toggle
 	bool isPlaying = scene.IsPlaying();
 	const char* playIcon = isPlaying ? "#132#" : "#131#";
-	if (GuiButton(Rectangle{ x, y, 32, h }, playIcon))
+	if (GuiButton(Rectangle{ leftX, y, 32, h }, playIcon))
 	{
 		scene.TogglePlay();
 	}
-	x += 36.0f;
+	leftX += 36.0f;
 
 	// Step forward 1 frame
-	if (GuiButton(Rectangle{ x, y, 28, h }, "#119#"))
+	if (GuiButton(Rectangle{ leftX, y, 28, h }, "#119#"))
 	{
 		scene.StepFrame(1);
 	}
-	x += 34.0f;
+	leftX += 34.0f;
 
 	// Previous & Next Animation buttons
 	const auto& anims = scene.GetAvailableAnimations();
 	if (anims.size() > 1)
 	{
-		if (GuiButton(Rectangle{ x, y, 52, h }, "#120# Prev"))
+		if (GuiButton(Rectangle{ leftX, y, 50, h }, "#120# Prev"))
 		{
 			scene.PrevAnimation();
 			ShowStatusMessage("Selected animation: " + scene.GetCurrentAnimationDisplayName());
 		}
-		x += 56.0f;
+		leftX += 54.0f;
 
-		if (GuiButton(Rectangle{ x, y, 52, h }, "Next #121#"))
+		if (GuiButton(Rectangle{ leftX, y, 50, h }, "Next #121#"))
 		{
 			scene.NextAnimation();
 			ShowStatusMessage("Selected animation: " + scene.GetCurrentAnimationDisplayName());
 		}
-		x += 58.0f;
+		leftX += 54.0f;
 	}
 
-	// Timeline Slider
+	leftX += 8.0f; // Padding before slider
+
+	// Calculate right-side controls positions from the right edge
+	float rightX = m_bottomBarRect.x + m_bottomBarRect.width - 10.0f;
+
+	// 1. Loop Button at far right
+	float loopW = 68.0f;
+	rightX -= loopW;
+	float loopX = rightX;
+	bool loop = scene.IsLooping();
+	if (GuiButton(Rectangle{ loopX, y, loopW, h }, loop ? "#133# Loop" : "#134# Once"))
+	{
+		scene.ToggleLoop();
+		ShowStatusMessage(scene.IsLooping() ? "Animation Loop: ON" : "Animation Loop: OFF (Single pass)");
+	}
+
+	rightX -= 12.0f;
+
+	// 2. Playback Speed Slider + Display
+	float spdValW = 28.0f;
+	float spdSliderW = 50.0f;
+	float spdLabelW = 32.0f;
+	float spdTotalW = spdLabelW + spdSliderW + spdValW + 8.0f;
+
+	rightX -= spdTotalW;
+	float spdX = rightX;
+
+	GuiLabel(Rectangle{ spdX, y + 4, spdLabelW, 20 }, "Spd:");
+	float speed = scene.GetAnimSpeed();
+	if (GuiSlider(Rectangle{ spdX + spdLabelW, y + 4, spdSliderW, 20 }, "", "", &speed, 0.1f, 3.0f))
+	{
+		scene.SetAnimSpeed(speed);
+	}
+	char spdStr[16];
+	std::snprintf(spdStr, sizeof(spdStr), "%.1fx", speed);
+	GuiLabel(Rectangle{ spdX + spdLabelW + spdSliderW + 6.0f, y + 4, spdValW, 20 }, spdStr);
+
+	rightX -= 12.0f;
+
+	// 3. Current Animation Name badge
+	if (!anims.empty())
+	{
+		float animBadgeW = 105.0f;
+		rightX -= animBadgeW;
+		int curIdx = scene.GetCurrentAnimationIndex();
+		std::string animBadge = "[" + std::to_string(curIdx + 1) + "/" + std::to_string(anims.size()) + "] " + scene.GetCurrentAnimationDisplayName();
+		if (animBadge.length() > 16) animBadge = animBadge.substr(0, 14) + "..";
+		GuiLabel(Rectangle{ rightX, y + 4, animBadgeW, 20 }, animBadge.c_str());
+		rightX -= 10.0f;
+	}
+
+	// 4. Frame counter text
 	int totalFrames = scene.GetTotalFrameCount();
 	float currentFrame = scene.GetCurrentFrame();
+	float frameTextW = 65.0f;
+	rightX -= frameTextW;
+	std::string frameText = std::to_string((int)currentFrame) + " / " + std::to_string(std::max(0, totalFrames - 1));
+	GuiLabel(Rectangle{ rightX, y + 4, frameTextW, 20 }, frameText.c_str());
+	rightX -= 10.0f;
 
-	float rightControlsWidth = 260.0f;
-	if (anims.size() > 1) rightControlsWidth += 40.0f;
-	float sliderWidth = m_bottomBarRect.width - (x - m_bottomBarRect.x) - rightControlsWidth;
-	if (sliderWidth < 100.0f) sliderWidth = 100.0f;
-
+	// Center Timeline Slider
+	float sliderWidth = std::max(60.0f, rightX - leftX);
 	float sliderVal = currentFrame;
 	if (totalFrames > 1)
 	{
-		if (GuiSlider(Rectangle{ x, y + 4, sliderWidth, 20 }, "0", std::to_string(totalFrames - 1).c_str(),
+		if (GuiSlider(Rectangle{ leftX, y + 4, sliderWidth, 20 }, "", "",
 		              &sliderVal, 0.0f, (float)(totalFrames - 1)))
 		{
 			scene.SetCurrentFrame(sliderVal);
@@ -1307,40 +1376,7 @@ void UserInterface::_drawBottomBar(SceneManager& scene, float deltaTime)
 	}
 	else
 	{
-		GuiSlider(Rectangle{ x, y + 4, sliderWidth, 20 }, "0", "0", &sliderVal, 0.0f, 0.0f);
-	}
-	x += sliderWidth + 10.0f;
-
-	// Frame counter text
-	std::string frameText = std::to_string((int)currentFrame) + " / " + std::to_string(std::max(0, totalFrames - 1));
-	GuiLabel(Rectangle{ x, y + 4, 65, 20 }, frameText.c_str());
-	x += 68.0f;
-
-	// Current Animation Name badge
-	if (!anims.empty())
-	{
-		int curIdx = scene.GetCurrentAnimationIndex();
-		std::string animBadge = "[" + std::to_string(curIdx + 1) + "/" + std::to_string(anims.size()) + "] " + scene.GetCurrentAnimationDisplayName();
-		if (animBadge.length() > 18) animBadge = animBadge.substr(0, 16) + "..";
-		GuiLabel(Rectangle{ x, y + 4, 110, 20 }, animBadge.c_str());
-		x += 114.0f;
-	}
-
-	// Playback Speed Slider
-	float speed = scene.GetAnimSpeed();
-	GuiLabel(Rectangle{ x, y + 4, 30, 20 }, "Spd:");
-	if (GuiSlider(Rectangle{ x + 30, y + 4, 45, 20 }, "", "3x", &speed, 0.1f, 3.0f))
-	{
-		scene.SetAnimSpeed(speed);
-	}
-	x += 80.0f;
-
-	// Loop toggle button / checkbox
-	bool loop = scene.IsLooping();
-	if (GuiToggle(Rectangle{ x, y + 2, 60, 24 }, loop ? "#133# Loop" : "Once", &loop))
-	{
-		scene.SetLooping(loop);
-		ShowStatusMessage(loop ? "Animation Loop: ON" : "Animation Loop: OFF (Single pass)");
+		GuiSlider(Rectangle{ leftX, y + 4, sliderWidth, 20 }, "", "", &sliderVal, 0.0f, 0.0f);
 	}
 }
 
@@ -1387,6 +1423,7 @@ void UserInterface::_drawFileDialog(SceneManager& scene, OrbitCamera& camera)
 	else if (m_fileDialog.target == DIALOG_OPEN_MOTION) title = "Load Animation Motion (.mot)";
 	else if (m_fileDialog.target == DIALOG_OPEN_SKELETON) title = "Load Skeleton (.bon)";
 	else if (m_fileDialog.target == DIALOG_SELECT_FOLDER) title = "Select Directory to Scan";
+	else if (m_fileDialog.target == DIALOG_EXPORT_GLTF) title = "Export to glTF 2.0 / GLB (.glb)";
 
 	DrawRectangle(boxX, boxY, boxW, 30, Color{ 40, 45, 58, 255 });
 	DrawText(title, boxX + 12, boxY + 8, 12, Color{ 230, 235, 245, 255 });
@@ -1486,7 +1523,7 @@ void UserInterface::_drawFileDialog(SceneManager& scene, OrbitCamera& camera)
 	}
 
 	// OK / Select Button
-	const char* okLabel = (m_fileDialog.target == DIALOG_SAVE_MODEL) ? "Save" : "Select";
+	const char* okLabel = (m_fileDialog.target == DIALOG_SAVE_MODEL) ? "Save" : ((m_fileDialog.target == DIALOG_EXPORT_GLTF) ? "Export" : "Select");
 	if (GuiButton(Rectangle{ px + pw - 150, py, 70, 24 }, okLabel))
 	{
 		std::string finalPath;
@@ -1544,6 +1581,18 @@ void UserInterface::_drawFileDialog(SceneManager& scene, OrbitCamera& camera)
 					else
 						ShowStatusMessage("Failed to save: " + m_fileDialog.selectedFile, 4.0f, true);
 				}
+			}
+			else if (m_fileDialog.target == DIALOG_EXPORT_GLTF)
+			{
+				std::string glbPath = finalPath;
+				if (glbPath.length() < 4 || (glbPath.substr(glbPath.length() - 4) != ".glb" && glbPath.substr(glbPath.length() - 5) != ".gltf"))
+				{
+					glbPath += ".glb";
+				}
+				if (scene.ExportToGLTF(glbPath, true))
+					ShowStatusMessage("Exported glTF 2.0: " + SceneManager::ExtractFileName(glbPath));
+				else
+					ShowStatusMessage("Failed to export glTF: " + SceneManager::ExtractFileName(glbPath), 4.0f, true);
 			}
 		}
 

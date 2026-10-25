@@ -1,4 +1,5 @@
 #include "SceneManager.h"
+#include "GltfExporter.h"
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
@@ -701,7 +702,14 @@ void SceneManager::UpdateAnimation(float deltaTime)
 	if (base)
 	{
 		int nextFrame = (int)m_currentFrame + 1;
-		if (total > 0) nextFrame %= total;
+		if (m_loop)
+		{
+			if (total > 0) nextFrame %= total;
+		}
+		else
+		{
+			if (total > 0) nextFrame = std::min(total - 1, nextFrame);
+		}
 
 		base->Animate(m_currentFrame, nextFrame, m_parts[0].currentLOD);
 
@@ -721,6 +729,15 @@ void SceneManager::UpdateAnimation(float deltaTime)
 			}
 		}
 	}
+}
+
+bool SceneManager::ExportToGLTF(const std::string& filepath, bool exportAllAnimations) const
+{
+	GltfExportOptions opts;
+	opts.exportAllAnimations = exportAllAnimations;
+	opts.embedTextures = true;
+	opts.exportCompositeScene = true;
+	return GltfExporter::ExportGLB(filepath, *this, opts);
 }
 
 void SceneManager::SyncBones()

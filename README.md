@@ -43,6 +43,18 @@ Powered by **raylib** and **raygui**, completely free of Qt and Direct3D 9 depen
   - First frame rewind (`|<`).
   - **Quick Motion Switcher**: `[Prev Motion]` and `[Next Motion]` buttons in the bottom timeline.
   - **Interactive Timeline Scrubber**: Drag slider to scrub across keyframes with real-time model and bone posing!
+  - **Playback Speed & Loop Control**: Adjust playback speed from `0.1x` to `3.0x` and toggle animation looping (`Loop` vs `Once`).
+
+### 4. glTF 2.0 / GLB 3D Export
+- **One-Click glTF 2.0 / GLB Export**:
+  - Export loaded models and composite character assemblies to standard, self-contained **`.glb`** / **`.gltf`** files.
+  - Compatible with **Blender**, **Godot**, **Unity**, **Unreal Engine**, **Three.js**, **Windows 3D Viewer**, and web model viewers.
+- **Includes All Geometry, Skeleton & Animations**:
+  - Exports vertex positions, normals, UV texture coordinates, joint indices (`JOINTS_0`), and skin weights (`WEIGHTS_0`).
+  - Exports full bone armature hierarchy with inverse bind matrices.
+  - Exports **all discovered animations** as named glTF animation tracks with linear quaternion and translation keyframing.
+  - Embeds standard PBR materials and PNG textures directly inside the single `.glb` file.
+  - Accessible via Top Bar (`#07# Export glTF`), Keyboard Shortcut (`Ctrl + E`), or CLI (`./model_viewer --export-glb <in.o3d> <out.glb>`).
   - Playback Speed Slider ($0.1\times \dots 3.0\times$).
   - Loop toggle (Loop playback vs Single pass).
   - Keyframe counter display: `Frame: X / Total: Y`.
@@ -166,6 +178,7 @@ You can drag and drop `.o3d` models, `.mot` / `.ani` animations, or `.chr` / `.b
 | `Ctrl + M` | Load Motion (`.mot` / `.ani`) Dialog |
 | `Ctrl + K` | Load Skeleton (`.chr` / `.bon`) Dialog |
 | `Ctrl + S` | Save Active Model (`.o3d`) |
+| `Ctrl + E` | Export to glTF 2.0 / GLB (`.glb`) |
 | `[` / `]` | Previous / Next Model Animation |
 | `Ctrl + Left / Right` | Previous / Next Model Animation |
 | `Space` | Play / Pause Animation |
