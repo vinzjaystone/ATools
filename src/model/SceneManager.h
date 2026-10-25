@@ -45,6 +45,7 @@ public:
 	bool LoadMotion(const std::string& filepath);
 	bool LoadSkeleton(const std::string& filepath);
 	void UnloadMotion();
+	void UnloadSkeleton();
 
 	void RemovePart(int index);
 	void ClearAppendedParts();

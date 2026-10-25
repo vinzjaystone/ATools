@@ -91,9 +91,9 @@ void UserInterface::_refreshDirectoryContents()
 				if (m_fileDialog.target == DIALOG_OPEN_MODEL || m_fileDialog.target == DIALOG_APPEND_MODEL || m_fileDialog.target == DIALOG_SAVE_MODEL)
 					accept = (ext == ".o3d");
 				else if (m_fileDialog.target == DIALOG_OPEN_MOTION)
-					accept = (ext == ".mot");
+					accept = (ext == ".mot" || ext == ".ani" || ext == ".mo3");
 				else if (m_fileDialog.target == DIALOG_OPEN_SKELETON)
-					accept = (ext == ".bon");
+					accept = (ext == ".chr" || ext == ".bon");
 				else if (m_fileDialog.target == DIALOG_SELECT_FOLDER)
 					accept = false;
 
@@ -221,11 +221,17 @@ void UserInterface::_drawTopBar(SceneManager& scene, OrbitCamera& camera, Render
 	}
 	x += 86.0f;
 
-	if (GuiButton(Rectangle{ x, y, 95, btnHeight }, "#132# Load Motion"))
+	if (GuiButton(Rectangle{ x, y, 75, btnHeight }, "#132# Motion"))
 	{
 		OpenFileDialog(DIALOG_OPEN_MOTION);
 	}
-	x += 101.0f;
+	x += 81.0f;
+
+	if (GuiButton(Rectangle{ x, y, 80, btnHeight }, "#140# Skeleton"))
+	{
+		OpenFileDialog(DIALOG_OPEN_SKELETON);
+	}
+	x += 86.0f;
 
 	// Separator
 	DrawLine((int)x + 4, 8, (int)x + 4, 36, Color{ 60, 65, 78, 255 });
@@ -533,16 +539,35 @@ void UserInterface::_drawLibraryTab(SceneManager& scene, OrbitCamera& camera)
 		const auto& skeletons = m_scanner.GetSkeletons();
 		if (skeletons.empty())
 		{
-			GuiLabel(Rectangle{ x + 10, y + 10, w - 20, 20 }, "No .bon skeletons found.");
+			GuiLabel(Rectangle{ x + 10, y + 10, w - 20, 20 }, "No .chr / .bon skeletons found.");
 		}
 		else
 		{
-			for (int i = 0; i < visibleItems && i < (int)skeletons.size(); i++)
+			int maxScroll = std::max(0, (int)skeletons.size() - visibleItems);
+			if (m_libraryScroll > maxScroll) m_libraryScroll = maxScroll;
+
+			Vector2 mousePos = GetMousePosition();
+			if (CheckCollisionPointRec(mousePos, Rectangle{ x, y, w, listHeight }))
 			{
-				const auto& item = skeletons[i];
+				float wheel = GetMouseWheelMove();
+				if (wheel != 0)
+				{
+					m_libraryScroll -= (int)wheel * 2;
+					if (m_libraryScroll < 0) m_libraryScroll = 0;
+					if (m_libraryScroll > maxScroll) m_libraryScroll = maxScroll;
+				}
+			}
+
+			for (int i = 0; i < visibleItems && (i + m_libraryScroll) < (int)skeletons.size(); i++)
+			{
+				int idx = i + m_libraryScroll;
+				const auto& item = skeletons[idx];
 				float itemY = y + i * itemHeight;
 
-				if (GuiButton(Rectangle{ x + 2, itemY + 1, w - 4, itemHeight - 2 }, item.filename.c_str()))
+				std::string label = item.filename;
+				if (label.length() > 22) label = label.substr(0, 20) + "..";
+
+				if (GuiButton(Rectangle{ x + 2, itemY + 1, w - 4, itemHeight - 2 }, ("#140# " + label).c_str()))
 				{
 					if (scene.LoadSkeleton(item.filepath))
 						ShowStatusMessage("Loaded skeleton: " + item.filename);
@@ -962,34 +987,54 @@ void UserInterface::_drawAnimationTab(SceneManager& scene)
 	float y = m_rightPanelRect.y + 36.0f;
 	float w = m_rightPanelRect.width - 16.0f;
 
-	GuiGroupBox(Rectangle{ x, y, w, 110 }, "Motion & Animation");
-	float py = y + 18.0f;
+	// 1. Skeleton (.chr / .bon) Section
+	CObject3D* baseModel = scene.GetBaseModel();
+	int boneCount = baseModel ? baseModel->GetBoneCount() : 0;
+	std::string skelPath = scene.GetActiveSkeletonPath();
+	std::string skelName = skelPath.empty() ? (boneCount > 0 ? "(Internal / Loaded)" : "(None)") : SceneManager::ExtractFileName(skelPath);
 
+	GuiGroupBox(Rectangle{ x, y, w, 88 }, "Skeleton (.chr / .bon)");
+	float py = y + 16.0f;
+	GuiLabel(Rectangle{ x + 10, py, w - 20, 18 }, ("Skeleton: " + skelName).c_str());
+	py += 18.0f;
+	GuiLabel(Rectangle{ x + 10, py, w - 20, 18 }, ("Bones: " + std::to_string(boneCount)).c_str());
+	py += 22.0f;
+
+	if (GuiButton(Rectangle{ x + 10, py, (w - 26) / 2, 22 }, "#140# Load .chr"))
+	{
+		OpenFileDialog(DIALOG_OPEN_SKELETON);
+	}
+	if (GuiButton(Rectangle{ x + (w - 26) / 2 + 16, py, (w - 26) / 2, 22 }, "#143# Unload"))
+	{
+		scene.UnloadSkeleton();
+		ShowStatusMessage("Unloaded skeleton.");
+	}
+	y += 98.0f;
+
+	// 2. Motion Animation (.mot / .ani) Section
 	int totalFrames = scene.GetTotalFrameCount();
 	std::string motPath = scene.GetActiveMotionPath();
-	std::string motName = motPath.empty() ? "(Internal / None)" : SceneManager::ExtractFileName(motPath);
+	std::string motName = motPath.empty() ? (totalFrames > 0 ? "(Internal / Loaded)" : "(None)") : SceneManager::ExtractFileName(motPath);
 
-	GuiLabel(Rectangle{ x + 10, py, w - 20, 18 }, ("Active Motion: " + motName).c_str());
-	py += 20.0f;
+	GuiGroupBox(Rectangle{ x, y, w, 88 }, "Motion Animation (.mot / .ani)");
+	py = y + 16.0f;
+	GuiLabel(Rectangle{ x + 10, py, w - 20, 18 }, ("Motion: " + motName).c_str());
+	py += 18.0f;
 	GuiLabel(Rectangle{ x + 10, py, w - 20, 18 }, ("Keyframes: " + std::to_string(totalFrames)).c_str());
 	py += 22.0f;
 
-	if (GuiButton(Rectangle{ x + 10, py, (w - 26) / 2, 24 }, "#132# Load .mot"))
+	if (GuiButton(Rectangle{ x + 10, py, (w - 26) / 2, 22 }, "#132# Load .mot"))
 	{
 		OpenFileDialog(DIALOG_OPEN_MOTION);
 	}
-
-	if (GuiButton(Rectangle{ x + (w - 26) / 2 + 16, py, (w - 26) / 2, 24 }, "#143# Unload"))
+	if (GuiButton(Rectangle{ x + (w - 26) / 2 + 16, py, (w - 26) / 2, 22 }, "#143# Unload"))
 	{
 		scene.UnloadMotion();
 		ShowStatusMessage("Unloaded active motion.");
 	}
-	y += 120.0f;
+	y += 98.0f;
 
-	// Skeleton Bones Inspector
-	CObject3D* baseModel = scene.GetBaseModel();
-	int boneCount = baseModel ? baseModel->GetBoneCount() : 0;
-
+	// 3. Skeleton Bones Inspector
 	GuiLabel(Rectangle{ x, y, w, 20 }, ("Skeleton Bones (" + std::to_string(boneCount) + "):").c_str());
 	y += 22.0f;
 
@@ -1003,18 +1048,36 @@ void UserInterface::_drawAnimationTab(SceneManager& scene)
 	}
 	else
 	{
-		const CMotion* mot = baseModel->GetMotion();
-		const Bone* boneList = mot ? mot->GetBones() : nullptr;
+		const CSkeleton* skl = baseModel ? baseModel->GetSkeleton() : nullptr;
+		const CMotion* mot = baseModel ? baseModel->GetMotion() : nullptr;
+		const Bone* boneList = (skl && skl->GetBones()) ? skl->GetBones() : (mot ? mot->GetBones() : nullptr);
 
 		float rowH = 20.0f;
-		for (int i = 0; i < boneCount; i++)
-		{
-			float rowY = y + i * rowH;
-			if (rowY + rowH > y + bonesHeight) break;
+		int visibleBones = (int)(bonesHeight / rowH);
+		int maxScroll = std::max(0, boneCount - visibleBones);
 
-			std::string boneLabel = "Bone #" + std::to_string(i);
-			if (boneList && boneList[i].name[0] != '\0')
-				boneLabel += " (" + std::string(boneList[i].name) + ")";
+		Vector2 mousePos = GetMousePosition();
+		if (CheckCollisionPointRec(mousePos, Rectangle{ x, y, w, bonesHeight }))
+		{
+			float wheel = GetMouseWheelMove();
+			if (wheel != 0)
+			{
+				m_bonesScroll -= (int)wheel * 2;
+				if (m_bonesScroll < 0) m_bonesScroll = 0;
+				if (m_bonesScroll > maxScroll) m_bonesScroll = maxScroll;
+			}
+		}
+
+		for (int i = 0; i < visibleBones && (i + m_bonesScroll) < boneCount; i++)
+		{
+			int boneIdx = i + m_bonesScroll;
+			float rowY = y + i * rowH;
+
+			std::string boneLabel = "#" + std::to_string(boneIdx);
+			if (boneList && boneList[boneIdx].name[0] != '\0')
+				boneLabel += " " + std::string(boneList[boneIdx].name);
+			if (boneList && boneList[boneIdx].parentID >= 0)
+				boneLabel += " -> [" + std::to_string(boneList[boneIdx].parentID) + "]";
 
 			GuiLabel(Rectangle{ x + 6, rowY + 1, w - 12, rowH - 2 }, boneLabel.c_str());
 		}

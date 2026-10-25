@@ -85,6 +85,7 @@ CObject3D::CObject3D()
 	  m_externInvBones(nullptr),
 	  m_sendVS(false),
 	  m_motion(nullptr),
+	  m_skeleton(nullptr),
 	  m_hasSkin(false)
 {
 	m_forces[0] = D3DXVECTOR3();
@@ -150,6 +151,7 @@ void CObject3D::Cleanup()
 	DeleteArray(m_baseBones);
 	m_baseInvBones = nullptr;
 	Delete(m_motion);
+	Delete(m_skeleton);
 
 	m_frameCount = 0;
 	m_boneCount = 0;
@@ -701,20 +703,32 @@ bool CObject3D::LoadMotion(const std::string& filename)
 
 bool CObject3D::LoadSkeleton(const std::string& filename)
 {
-	CSkeleton skl;
-	if (!skl.Load(filename))
+	Delete(m_skeleton);
+	m_skeleton = new CSkeleton();
+	if (!m_skeleton->Load(filename))
+	{
+		Delete(m_skeleton);
 		return false;
+	}
 
-	int boneCount = skl.GetBoneCount();
+	int boneCount = m_skeleton->GetBoneCount();
 	if (boneCount > 0)
 	{
 		DeleteArray(m_baseBones);
 		m_boneCount = boneCount;
 		m_baseBones = new D3DXMATRIX[m_boneCount * 2];
 		m_baseInvBones = m_baseBones + m_boneCount;
-		skl.ResetBones(m_baseBones, m_baseInvBones);
+		m_skeleton->ResetBones(m_baseBones, m_baseInvBones);
 	}
 	return true;
+}
+
+void CObject3D::UnloadSkeleton()
+{
+	Delete(m_skeleton);
+	DeleteArray(m_baseBones);
+	m_baseInvBones = nullptr;
+	m_boneCount = 0;
 }
 
 void CObject3D::UnloadMotion()

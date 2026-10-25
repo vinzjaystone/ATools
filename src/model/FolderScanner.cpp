@@ -84,7 +84,7 @@ void FolderScanner::Scan(const std::string& folderPath, bool recursive)
 			if (!entry.is_regular_file()) return;
 
 			std::string ext = ToLower(entry.path().extension().string());
-			if (ext == ".o3d" || ext == ".mot" || ext == ".bon")
+			if (ext == ".o3d" || ext == ".mot" || ext == ".ani" || ext == ".mo3" || ext == ".chr" || ext == ".bon")
 			{
 				ScannedFile file;
 				file.filename = entry.path().filename().string();
@@ -98,9 +98,9 @@ void FolderScanner::Scan(const std::string& folderPath, bool recursive)
 
 				if (ext == ".o3d")
 					m_allModels.push_back(file);
-				else if (ext == ".mot")
+				else if (ext == ".mot" || ext == ".ani" || ext == ".mo3")
 					m_allMotions.push_back(file);
-				else if (ext == ".bon")
+				else if (ext == ".chr" || ext == ".bon")
 					m_allSkeletons.push_back(file);
 			}
 		};
