@@ -176,21 +176,27 @@ public:
 	GMObject* GetCollisionObj() { return (m_collObj.type != GMT_ERROR) ? &m_collObj : nullptr; }
 	const GMObject* GetCollisionObj() const { return (m_collObj.type != GMT_ERROR) ? &m_collObj : nullptr; }
 
+	int GetEffectiveBoneCount() const;
+
 	MotionAttribute* GetAttributes() const { return m_attributes; }
 	CMotion* GetMotion() const { return m_motion; }
 	CSkeleton* GetSkeleton() const { return m_skeleton; }
 	D3DXMATRIX* GetBaseBones() const { return m_baseBones; }
 	D3DXMATRIX* GetBaseInvBones() const { return m_baseInvBones; }
-	D3DXMATRIX* GetEffectiveBones() const { return m_baseBones ? m_baseBones : m_externBones; }
-	D3DXMATRIX* GetEffectiveInvBones() const { return m_baseInvBones ? m_baseInvBones : m_externInvBones; }
+	D3DXMATRIX* GetEffectiveBones() const {
+		if (m_externBones) return m_externBones;
+		return m_baseBones;
+	}
+	D3DXMATRIX* GetEffectiveInvBones() const {
+		if (m_baseInvBones) return m_baseInvBones;
+		return m_externInvBones;
+	}
 
-	void SetExternBones(D3DXMATRIX* bones, D3DXMATRIX* invBones)
+	void SetExternBones(D3DXMATRIX* bones, D3DXMATRIX* invBones, int boneCount = 0)
 	{
-		if (!m_baseBones)
-		{
-			m_externBones = bones;
-			m_externInvBones = invBones;
-		}
+		m_externBones = bones;
+		m_externInvBones = invBones;
+		m_externBoneCount = boneCount;
 	}
 
 	// External animation & skeleton loading
@@ -229,6 +235,7 @@ private:
 	D3DXMATRIX* m_baseInvBones;
 	D3DXMATRIX* m_externBones;
 	D3DXMATRIX* m_externInvBones;
+	int m_externBoneCount;
 	bool m_sendVS;
 	CMotion* m_motion;
 	CSkeleton* m_skeleton;

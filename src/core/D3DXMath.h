@@ -118,6 +118,7 @@ D3DXMATRIX* D3DXMatrixRotationX(D3DXMATRIX* out, float angle);
 D3DXMATRIX* D3DXMatrixRotationY(D3DXMATRIX* out, float angle);
 D3DXMATRIX* D3DXMatrixRotationZ(D3DXMATRIX* out, float angle);
 D3DXMATRIX* D3DXMatrixRotationQuaternion(D3DXMATRIX* out, const D3DXQUATERNION* q);
+D3DXMATRIX* D3DXMatrixRotationYawPitchRoll(D3DXMATRIX* out, float yaw, float pitch, float roll);
 D3DXMATRIX* D3DXMatrixTranspose(D3DXMATRIX* out, const D3DXMATRIX* in);
 D3DXMATRIX* D3DXMatrixInverse(D3DXMATRIX* out, float* determinant, const D3DXMATRIX* in);
 

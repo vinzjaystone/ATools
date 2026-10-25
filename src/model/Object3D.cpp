@@ -83,6 +83,7 @@ CObject3D::CObject3D()
 	  m_baseInvBones(nullptr),
 	  m_externBones(nullptr),
 	  m_externInvBones(nullptr),
+	  m_externBoneCount(0),
 	  m_sendVS(false),
 	  m_motion(nullptr),
 	  m_skeleton(nullptr),
@@ -150,6 +151,9 @@ void CObject3D::Cleanup()
 	DeleteArray(m_attributes);
 	DeleteArray(m_baseBones);
 	m_baseInvBones = nullptr;
+	m_externBones = nullptr;
+	m_externInvBones = nullptr;
+	m_externBoneCount = 0;
 	Delete(m_motion);
 	Delete(m_skeleton);
 
@@ -721,6 +725,14 @@ bool CObject3D::LoadSkeleton(const std::string& filename)
 		m_skeleton->ResetBones(m_baseBones, m_baseInvBones);
 	}
 	return true;
+}
+
+int CObject3D::GetEffectiveBoneCount() const
+{
+	if (m_externBoneCount > 0) return m_externBoneCount;
+	if (m_boneCount > 0) return m_boneCount;
+	if (m_skeleton) return m_skeleton->GetBoneCount();
+	return 0;
 }
 
 void CObject3D::UnloadSkeleton()

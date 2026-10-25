@@ -665,11 +665,23 @@ void UserInterface::_drawScenePartsTab(SceneManager& scene, OrbitCamera& camera)
 		// Bone Attachment Socket (for accessories, weapons, hats)
 		GuiLabel(Rectangle{ x + 6, py, 80, 20 }, "Attachment:");
 		CObject3D* baseModel = scene.GetBaseModel();
-		int boneCount = baseModel ? baseModel->GetBoneCount() : 0;
+		int boneCount = baseModel ? baseModel->GetEffectiveBoneCount() : 0;
 
-		std::string socketName = "Root / Skinned";
+		std::string socketName = "Skinned / Skeleton";
 		if (activePart->attachBoneID >= 0)
+		{
 			socketName = "Bone #" + std::to_string(activePart->attachBoneID);
+			if (baseModel)
+			{
+				const Bone* bones = baseModel->GetSkeleton() ? baseModel->GetSkeleton()->GetBones() : (baseModel->GetMotion() ? baseModel->GetMotion()->GetBones() : nullptr);
+				if (bones && activePart->attachBoneID < boneCount && bones[activePart->attachBoneID].name[0] != '\0')
+				{
+					std::string bn = bones[activePart->attachBoneID].name;
+					if (bn.length() > 14) bn = bn.substr(0, 12) + "..";
+					socketName += " (" + bn + ")";
+				}
+			}
+		}
 
 		if (GuiButton(Rectangle{ x + 90, py, w - 100, 22 }, socketName.c_str()))
 		{
@@ -678,7 +690,7 @@ void UserInterface::_drawScenePartsTab(SceneManager& scene, OrbitCamera& camera)
 			{
 				activePart->attachBoneID++;
 				if (activePart->attachBoneID >= boneCount)
-					activePart->attachBoneID = -1; // wrap back to root
+					activePart->attachBoneID = -1; // wrap back to skinned
 			}
 		}
 		py += 28.0f;
@@ -686,7 +698,7 @@ void UserInterface::_drawScenePartsTab(SceneManager& scene, OrbitCamera& camera)
 		// Quick socket reset button
 		if (activePart->attachBoneID >= 0)
 		{
-			if (GuiButton(Rectangle{ x + 90, py, w - 100, 20 }, "Reset to Root"))
+			if (GuiButton(Rectangle{ x + 90, py, w - 100, 20 }, "Reset to Skinned"))
 				activePart->attachBoneID = -1;
 		}
 
