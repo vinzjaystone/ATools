@@ -68,11 +68,11 @@ void SceneRenderer::DrawAxes(float length)
 
 void SceneRenderer::DrawBoundingBox(const Bounds& bounds, Color color)
 {
-	rlBegin(RL_LINES);
-	rlColor4ub(color.r, color.g, color.b, color.a);
-
 	float minX = bounds.Min.x, minY = bounds.Min.y, minZ = bounds.Min.z;
 	float maxX = bounds.Max.x, maxY = bounds.Max.y, maxZ = bounds.Max.z;
+
+	rlBegin(RL_LINES);
+	rlColor4ub(color.r, color.g, color.b, color.a);
 
 	// Bottom 4 edges
 	rlVertex3f(minX, minY, minZ); rlVertex3f(maxX, minY, minZ);
@@ -172,36 +172,42 @@ void SceneRenderer::DrawBones(const CObject3D* model)
 	if (!model) return;
 
 	int boneCount = model->GetBoneCount();
-	D3DXMATRIX* bones = model->GetBaseBones();
+	D3DXMATRIX* bones = model->GetEffectiveBones();
 
 	if (boneCount <= 0 || !bones) return;
 
 	static Color boneColors[] = {
 		Color{ 60, 255, 60, 255 },
-		Color{ 60, 220, 255, 255 },
-		Color{ 255, 220, 50, 255 },
-		Color{ 255, 100, 220, 255 },
-		Color{ 255, 120, 50, 255 },
-		Color{ 180, 100, 255, 255 }
+		Color{ 255, 200, 40, 255 },
+		Color{ 40, 200, 255, 255 },
+		Color{ 255, 80, 80, 255 }
 	};
-	int numColors = sizeof(boneColors) / sizeof(boneColors[0]);
 
+	// Draw Bone Joint crosses
+	rlBegin(RL_LINES);
 	for (int i = 0; i < boneCount; i++)
 	{
 		D3DXVECTOR3 pos(0.0f, 0.0f, 0.0f);
 		D3DXVec3TransformCoord(&pos, &pos, &bones[i]);
 
-		Color col = boneColors[i % numColors];
-		DrawSphere(Vector3{ pos.x, pos.y, pos.z }, 0.04f, col);
-	}
+		Color c = boneColors[i % 4];
+		rlColor4ub(c.r, c.g, c.b, 255);
 
-	// Draw bone connections if skeleton is available
-	CMotion* motion = model->GetMotion();
-	if (motion && motion->GetBones())
+		// Small 3D cross for each bone joint
+		float s = 0.03f;
+		rlVertex3f(pos.x - s, pos.y, pos.z); rlVertex3f(pos.x + s, pos.y, pos.z);
+		rlVertex3f(pos.x, pos.y - s, pos.z); rlVertex3f(pos.x, pos.y + s, pos.z);
+		rlVertex3f(pos.x, pos.y, pos.z - s); rlVertex3f(pos.x, pos.y, pos.z + s);
+	}
+	rlEnd();
+
+	// Draw Bone Hierarchy Connections
+	const CMotion* mot = model->GetMotion();
+	if (mot && mot->GetBones())
 	{
-		Bone* boneList = motion->GetBones();
+		const Bone* boneList = mot->GetBones();
 		rlBegin(RL_LINES);
-		rlColor4ub(255, 255, 255, 180);
+		rlColor4ub(255, 255, 100, 220);
 
 		for (int i = 0; i < boneCount; i++)
 		{
@@ -221,7 +227,7 @@ void SceneRenderer::DrawBones(const CObject3D* model)
 
 void SceneRenderer::_drawGMObject(const GMObject& obj, const D3DXMATRIX& transform, int lod,
                                   const RenderSettings& settings, const CObject3D* model,
-                                  int objIdx)
+                                  int objIdx, bool isSelectedPart)
 {
 	if (obj.vertexCount <= 0 || obj.indexCount < 3 || !obj.vertices || !obj.indices)
 		return;
@@ -243,7 +249,7 @@ void SceneRenderer::_drawGMObject(const GMObject& obj, const D3DXMATRIX& transfo
 		const MaterialBlock& block = obj.materialBlocks[b];
 		if (block.primitiveCount <= 0) continue;
 
-		bool isSelected = (settings.selectedObjIndex == objIdx &&
+		bool isSelected = isSelectedPart && (settings.selectedObjIndex == objIdx &&
 		                  (settings.selectedBlockIndex == -1 || settings.selectedBlockIndex == b));
 
 		// Texture setup
@@ -287,24 +293,25 @@ void SceneRenderer::_drawGMObject(const GMObject& obj, const D3DXMATRIX& transfo
 				int idxBase = block.startVertex + j * 3;
 				if (idxBase + 2 >= obj.indexCount) break;
 
-				ushort i0 = indices[idxBase + 0];
-				ushort i1 = indices[idxBase + 1];
-				ushort i2 = indices[idxBase + 2];
-				if (i0 >= obj.vertexCount || i1 >= obj.vertexCount || i2 >= obj.vertexCount) continue;
+				ushort idx[3] = {
+					indices[idxBase + 0],
+					indices[idxBase + 1],
+					indices[idxBase + 2]
+				};
 
-				D3DXVECTOR3 p0, p1, p2;
-				D3DXVec3TransformCoord(&p0, &vertices[i0].p, &transform);
-				D3DXVec3TransformCoord(&p1, &vertices[i1].p, &transform);
-				D3DXVec3TransformCoord(&p2, &vertices[i2].p, &transform);
+				D3DXVECTOR3 p[3];
+				for (int k = 0; k < 3; k++)
+				{
+					if (idx[k] < obj.vertexCount)
+						D3DXVec3TransformCoord(&p[k], &vertices[idx[k]].p, &transform);
+				}
 
-				if (isSelected)
-					rlColor4ub(255, 230, 80, 255);
-				else
-					rlColor4ub(200, 210, 220, 255);
+				Color wireCol = isSelected ? Color{ 255, 220, 60, 255 } : Color{ 200, 220, 240, 220 };
+				rlColor4ub(wireCol.r, wireCol.g, wireCol.b, wireCol.a);
 
-				rlVertex3f(p0.x, p0.y, p0.z); rlVertex3f(p1.x, p1.y, p1.z);
-				rlVertex3f(p1.x, p1.y, p1.z); rlVertex3f(p2.x, p2.y, p2.z);
-				rlVertex3f(p2.x, p2.y, p2.z); rlVertex3f(p0.x, p0.y, p0.z);
+				rlVertex3f(p[0].x, p[0].y, p[0].z); rlVertex3f(p[1].x, p[1].y, p[1].z);
+				rlVertex3f(p[1].x, p[1].y, p[1].z); rlVertex3f(p[2].x, p[2].y, p[2].z);
+				rlVertex3f(p[2].x, p[2].y, p[2].z); rlVertex3f(p[0].x, p[0].y, p[0].z);
 			}
 			rlEnd();
 		}
@@ -312,29 +319,19 @@ void SceneRenderer::_drawGMObject(const GMObject& obj, const D3DXMATRIX& transfo
 		{
 			rlSetTexture(whiteTex.id);
 			rlBegin(RL_LINES);
-			for (int j = 0; j < block.primitiveCount; j++)
+			rlColor4ub(255, 255, 255, 255);
+			for (int j = 0; j < obj.vertexCount; j++)
 			{
-				int idxBase = block.startVertex + j * 3;
-				if (idxBase + 2 >= obj.indexCount) break;
-
-				for (int k = 0; k < 3; k++)
-				{
-					ushort idx = indices[idxBase + k];
-					if (idx >= obj.vertexCount) continue;
-
-					D3DXVECTOR3 p;
-					D3DXVec3TransformCoord(&p, &vertices[idx].p, &transform);
-
-					rlColor4ub(255, 255, 100, 255);
-					rlVertex3f(p.x - 0.01f, p.y, p.z);
-					rlVertex3f(p.x + 0.01f, p.y, p.z);
-					rlVertex3f(p.x, p.y - 0.01f, p.z);
-					rlVertex3f(p.x, p.y + 0.01f, p.z);
-				}
+				D3DXVECTOR3 p;
+				D3DXVec3TransformCoord(&p, &vertices[j].p, &transform);
+				rlVertex3f(p.x - 0.01f, p.y, p.z);
+				rlVertex3f(p.x + 0.01f, p.y, p.z);
+				rlVertex3f(p.x, p.y - 0.01f, p.z);
+				rlVertex3f(p.x, p.y + 0.01f, p.z);
 			}
 			rlEnd();
 		}
-		else // Solid triangles
+		else // Solid
 		{
 			rlBegin(RL_TRIANGLES);
 
@@ -400,9 +397,9 @@ void SceneRenderer::_drawGMObject(const GMObject& obj, const D3DXMATRIX& transfo
 	rlSetTexture(0);
 }
 
-void SceneRenderer::_drawSkinGMObject(const GMObject& obj, int lod,
+void SceneRenderer::_drawSkinGMObject(const GMObject& obj, const D3DXMATRIX& rootTransform, int lod,
                                       const RenderSettings& settings, const CObject3D* model,
-                                      int objIdx)
+                                      int objIdx, bool isSelectedPart)
 {
 	if (obj.vertexCount <= 0 || obj.indexCount < 3 || !obj.vertices || !obj.indices)
 		return;
@@ -410,8 +407,8 @@ void SceneRenderer::_drawSkinGMObject(const GMObject& obj, int lod,
 	SkinVertex* vertices = (SkinVertex*)obj.vertices;
 	ushort* indices = obj.indices;
 
-	D3DXMATRIX* bones = model ? model->GetBaseBones() : nullptr;
-	D3DXMATRIX* invBones = model ? model->GetBaseInvBones() : nullptr;
+	D3DXMATRIX* bones = model ? model->GetEffectiveBones() : nullptr;
+	D3DXMATRIX* invBones = model ? model->GetEffectiveInvBones() : nullptr;
 
 	D3DXVECTOR3 lightDir(0.5f, 1.0f, 0.7f);
 	D3DXVec3Normalize(&lightDir, &lightDir);
@@ -425,6 +422,8 @@ void SceneRenderer::_drawSkinGMObject(const GMObject& obj, int lod,
 	std::vector<D3DXVECTOR3> transPos(obj.vertexCount);
 	std::vector<D3DXVECTOR3> transNorm(obj.vertexCount);
 
+	int boneCount = model ? model->GetBoneCount() : 0;
+
 	for (int v = 0; v < obj.vertexCount; v++)
 	{
 		const SkinVertex& sv = vertices[v];
@@ -434,23 +433,26 @@ void SceneRenderer::_drawSkinGMObject(const GMObject& obj, int lod,
 			ushort iibIdx = obj.IIB[v];
 			int boneID = (iibIdx < obj.vertexListCount) ? obj.physiqueVertices[iibIdx] : 0;
 
-			if (boneID >= 0 && boneID < model->GetBoneCount())
+			if (boneID >= 0 && boneID < boneCount)
 			{
 				D3DXMATRIX tm = invBones[boneID] * bones[boneID];
+				tm = tm * rootTransform;
 				D3DXVec3TransformCoord(&transPos[v], &sv.p, &tm);
 				D3DXVec3TransformNormal(&transNorm[v], &sv.n, &tm);
 				D3DXVec3Normalize(&transNorm[v], &transNorm[v]);
 			}
 			else
 			{
-				transPos[v] = sv.p;
-				transNorm[v] = sv.n;
+				D3DXVec3TransformCoord(&transPos[v], &sv.p, &rootTransform);
+				D3DXVec3TransformNormal(&transNorm[v], &sv.n, &rootTransform);
+				D3DXVec3Normalize(&transNorm[v], &transNorm[v]);
 			}
 		}
 		else
 		{
-			transPos[v] = sv.p;
-			transNorm[v] = sv.n;
+			D3DXVec3TransformCoord(&transPos[v], &sv.p, &rootTransform);
+			D3DXVec3TransformNormal(&transNorm[v], &sv.n, &rootTransform);
+			D3DXVec3Normalize(&transNorm[v], &transNorm[v]);
 		}
 	}
 
@@ -459,7 +461,7 @@ void SceneRenderer::_drawSkinGMObject(const GMObject& obj, int lod,
 		const MaterialBlock& block = obj.materialBlocks[b];
 		if (block.primitiveCount <= 0) continue;
 
-		bool isSelected = (settings.selectedObjIndex == objIdx &&
+		bool isSelected = isSelectedPart && (settings.selectedObjIndex == objIdx &&
 		                  (settings.selectedBlockIndex == -1 || settings.selectedBlockIndex == b));
 
 		Texture2D tex = whiteTex;
@@ -500,24 +502,25 @@ void SceneRenderer::_drawSkinGMObject(const GMObject& obj, int lod,
 				int idxBase = block.startVertex + j * 3;
 				if (idxBase + 2 >= obj.indexCount) break;
 
-				ushort i0 = indices[idxBase + 0];
-				ushort i1 = indices[idxBase + 1];
-				ushort i2 = indices[idxBase + 2];
-				if (i0 >= obj.vertexCount || i1 >= obj.vertexCount || i2 >= obj.vertexCount) continue;
+				ushort idx[3] = {
+					indices[idxBase + 0],
+					indices[idxBase + 1],
+					indices[idxBase + 2]
+				};
 
-				if (isSelected)
-					rlColor4ub(255, 230, 80, 255);
-				else
-					rlColor4ub(200, 210, 220, 255);
+				Color wireCol = isSelected ? Color{ 255, 220, 60, 255 } : Color{ 200, 220, 240, 220 };
+				rlColor4ub(wireCol.r, wireCol.g, wireCol.b, wireCol.a);
 
-				rlVertex3f(transPos[i0].x, transPos[i0].y, transPos[i0].z);
-				rlVertex3f(transPos[i1].x, transPos[i1].y, transPos[i1].z);
+				if (idx[0] < obj.vertexCount && idx[1] < obj.vertexCount && idx[2] < obj.vertexCount)
+				{
+					const D3DXVECTOR3& p0 = transPos[idx[0]];
+					const D3DXVECTOR3& p1 = transPos[idx[1]];
+					const D3DXVECTOR3& p2 = transPos[idx[2]];
 
-				rlVertex3f(transPos[i1].x, transPos[i1].y, transPos[i1].z);
-				rlVertex3f(transPos[i2].x, transPos[i2].y, transPos[i2].z);
-
-				rlVertex3f(transPos[i2].x, transPos[i2].y, transPos[i2].z);
-				rlVertex3f(transPos[i0].x, transPos[i0].y, transPos[i0].z);
+					rlVertex3f(p0.x, p0.y, p0.z); rlVertex3f(p1.x, p1.y, p1.z);
+					rlVertex3f(p1.x, p1.y, p1.z); rlVertex3f(p2.x, p2.y, p2.z);
+					rlVertex3f(p2.x, p2.y, p2.z); rlVertex3f(p0.x, p0.y, p0.z);
+				}
 			}
 			rlEnd();
 		}
@@ -525,23 +528,14 @@ void SceneRenderer::_drawSkinGMObject(const GMObject& obj, int lod,
 		{
 			rlSetTexture(whiteTex.id);
 			rlBegin(RL_LINES);
-			for (int j = 0; j < block.primitiveCount; j++)
+			rlColor4ub(255, 255, 255, 255);
+			for (int j = 0; j < obj.vertexCount; j++)
 			{
-				int idxBase = block.startVertex + j * 3;
-				if (idxBase + 2 >= obj.indexCount) break;
-
-				for (int k = 0; k < 3; k++)
-				{
-					ushort idx = indices[idxBase + k];
-					if (idx >= obj.vertexCount) continue;
-
-					const D3DXVECTOR3& p = transPos[idx];
-					rlColor4ub(255, 255, 100, 255);
-					rlVertex3f(p.x - 0.01f, p.y, p.z);
-					rlVertex3f(p.x + 0.01f, p.y, p.z);
-					rlVertex3f(p.x, p.y - 0.01f, p.z);
-					rlVertex3f(p.x, p.y + 0.01f, p.z);
-				}
+				const D3DXVECTOR3& p = transPos[j];
+				rlVertex3f(p.x - 0.01f, p.y, p.z);
+				rlVertex3f(p.x + 0.01f, p.y, p.z);
+				rlVertex3f(p.x, p.y - 0.01f, p.z);
+				rlVertex3f(p.x, p.y + 0.01f, p.z);
 			}
 			rlEnd();
 		}
@@ -607,15 +601,75 @@ void SceneRenderer::_drawSkinGMObject(const GMObject& obj, int lod,
 	rlSetTexture(0);
 }
 
+void SceneRenderer::_drawModelInternal(const CObject3D* model, int lod, const D3DXMATRIX& rootTransform,
+                                       const RenderSettings& settings, bool isSelectedPart)
+{
+	if (!model) return;
+
+	const LODGroup* group = model->GetGroup(lod);
+	if (!group || !group->objects) return;
+
+	for (int i = 0; i < group->objectCount; i++)
+	{
+		const GMObject& obj = group->objects[i];
+		D3DXMATRIX objTrans = group->updates ? group->updates[i] : obj.transform;
+		D3DXMATRIX finalTrans = objTrans * rootTransform;
+
+		if (obj.type == GMT_SKIN)
+			_drawSkinGMObject(obj, rootTransform, lod, settings, model, i, isSelectedPart);
+		else
+			_drawGMObject(obj, finalTrans, lod, settings, model, i, isSelectedPart);
+
+		if (settings.showSubBounds)
+			DrawBoundingBoxOriented(obj.bounds, finalTrans, Color{ 80, 140, 255, 180 });
+	}
+}
+
 void SceneRenderer::Render(const CObject3D* model, int lod, const OrbitCamera& camera,
                            Rectangle viewportRect, const RenderSettings& settings)
 {
-	// Set scissor test to viewport rectangle
 	rlEnableScissorTest();
 	rlScissor((int)viewportRect.x, (int)(GetScreenHeight() - (viewportRect.y + viewportRect.height)),
 	          (int)viewportRect.width, (int)viewportRect.height);
 
-	// Clear viewport background
+	DrawRectangleRec(viewportRect, settings.backgroundColor);
+
+	Camera3D cam = camera.GetRaylibCamera();
+	BeginMode3D(cam);
+
+	if (settings.showGrid)
+		DrawGrid(32, 1.0f);
+
+	if (settings.showAxes)
+		DrawAxes(2.0f);
+
+	if (model)
+	{
+		D3DXMATRIX identity;
+		D3DXMatrixIdentity(&identity);
+		_drawModelInternal(model, lod, identity, settings, true);
+
+		if (settings.showBounds)
+			DrawBoundingBox(model->GetBounds(), Color{ 0, 225, 240, 240 });
+
+		if (settings.showCollision)
+			DrawCollisionMesh(model->GetCollisionObj(), settings);
+
+		if (settings.showBones)
+			DrawBones(model);
+	}
+
+	EndMode3D();
+	rlDisableScissorTest();
+}
+
+void SceneRenderer::RenderScene(const SceneManager& scene, const OrbitCamera& camera,
+                                Rectangle viewportRect, const RenderSettings& settings)
+{
+	rlEnableScissorTest();
+	rlScissor((int)viewportRect.x, (int)(GetScreenHeight() - (viewportRect.y + viewportRect.height)),
+	          (int)viewportRect.width, (int)viewportRect.height);
+
 	DrawRectangleRec(viewportRect, settings.backgroundColor);
 
 	Camera3D cam = camera.GetRaylibCamera();
@@ -629,42 +683,51 @@ void SceneRenderer::Render(const CObject3D* model, int lod, const OrbitCamera& c
 	if (settings.showAxes)
 		DrawAxes(2.0f);
 
-	// 3. Render 3D Model
-	if (model)
+	// 3. Render all scene parts
+	const CObject3D* baseModel = scene.GetBaseModel();
+	int activeIdx = scene.GetActivePartIndex();
+
+	for (int p = 0; p < scene.GetPartCount(); p++)
 	{
-		const LODGroup* group = model->GetGroup(lod);
-		if (group && group->objects)
+		const ScenePart* part = scene.GetPart(p);
+		if (!part || !part->visible || !part->model)
+			continue;
+
+		D3DXMATRIX rootTransform;
+		D3DXMatrixIdentity(&rootTransform);
+
+		// If attached to a specific bone socket on the base model
+		if (part->attachBoneID >= 0 && baseModel)
 		{
-			for (int i = 0; i < group->objectCount; i++)
+			D3DXMATRIX* baseBones = baseModel->GetBaseBones();
+			if (baseBones && part->attachBoneID < baseModel->GetBoneCount())
 			{
-				const GMObject& obj = group->objects[i];
-				D3DXMATRIX transform = group->updates ? group->updates[i] : obj.transform;
-
-				if (obj.type == GMT_SKIN)
-					_drawSkinGMObject(obj, lod, settings, model, i);
-				else
-					_drawGMObject(obj, transform, lod, settings, model, i);
-
-				// Sub-object bounding boxes
-				if (settings.showSubBounds)
-					DrawBoundingBoxOriented(obj.bounds, transform, Color{ 80, 140, 255, 180 });
+				rootTransform = baseBones[part->attachBoneID];
 			}
 		}
 
-		// Overall model bounding box
-		if (settings.showBounds)
-			DrawBoundingBox(model->GetBounds(), Color{ 0, 225, 240, 240 });
+		bool isSelectedPart = (p == activeIdx);
+		_drawModelInternal(part->model, part->currentLOD, rootTransform, settings, isSelectedPart);
+	}
 
-		// Collision mesh
-		if (settings.showCollision)
-			DrawCollisionMesh(model->GetCollisionObj(), settings);
+	// 4. Scene Overlays (Bounds, Bones, Collision)
+	if (settings.showBounds)
+	{
+		Bounds combined = scene.GetCombinedBounds();
+		DrawBoundingBox(combined, Color{ 0, 225, 240, 240 });
+	}
 
-		// Bones
-		if (settings.showBones)
-			DrawBones(model);
+	if (settings.showBones && baseModel)
+	{
+		DrawBones(baseModel);
+	}
+
+	const CObject3D* activeModel = scene.GetActiveModel();
+	if (settings.showCollision && activeModel)
+	{
+		DrawCollisionMesh(activeModel->GetCollisionObj(), settings);
 	}
 
 	EndMode3D();
-
 	rlDisableScissorTest();
 }

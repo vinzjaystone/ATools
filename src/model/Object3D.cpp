@@ -672,8 +672,66 @@ void CObject3D::SaveGMObject(CFile& file, GMObject& obj)
 		file.Write(obj.materialBlocks, obj.materialBlockCount);
 }
 
+bool CObject3D::LoadMotion(const std::string& filename)
+{
+	Delete(m_motion);
+	m_motion = new CMotion();
+	if (!m_motion->Load(filename))
+	{
+		Delete(m_motion);
+		return false;
+	}
+
+	m_frameCount = m_motion->GetFrameCount();
+
+	if (m_boneCount == 0 && m_motion->GetBoneCount() > 0)
+	{
+		m_boneCount = m_motion->GetBoneCount();
+		m_baseBones = new D3DXMATRIX[m_boneCount * 2];
+		m_baseInvBones = m_baseBones + m_boneCount;
+		for (int i = 0; i < m_boneCount; i++)
+		{
+			D3DXMatrixIdentity(&m_baseBones[i]);
+			D3DXMatrixIdentity(&m_baseInvBones[i]);
+		}
+	}
+
+	return true;
+}
+
+bool CObject3D::LoadSkeleton(const std::string& filename)
+{
+	CSkeleton skl;
+	if (!skl.Load(filename))
+		return false;
+
+	int boneCount = skl.GetBoneCount();
+	if (boneCount > 0)
+	{
+		DeleteArray(m_baseBones);
+		m_boneCount = boneCount;
+		m_baseBones = new D3DXMATRIX[m_boneCount * 2];
+		m_baseInvBones = m_baseBones + m_boneCount;
+		skl.ResetBones(m_baseBones, m_baseInvBones);
+	}
+	return true;
+}
+
+void CObject3D::UnloadMotion()
+{
+	Delete(m_motion);
+	m_frameCount = 0;
+}
+
 void CObject3D::Animate(float currentFrame_, int nextFrame, int lod)
 {
+	D3DXMATRIX* activeBones = m_baseBones ? m_baseBones : m_externBones;
+
+	if (m_motion && activeBones)
+	{
+		m_motion->Animate(activeBones, currentFrame_, nextFrame);
+	}
+
 	LODGroup* group = GetGroup(lod);
 	if (!group || !group->updates || group->objectCount <= 0)
 		return;
@@ -698,10 +756,7 @@ void CObject3D::Animate(float currentFrame_, int nextFrame, int lod)
 		obj = &group->objects[i];
 		if (obj->parentType == GMT_BONE)
 		{
-			if (m_externBones)
-				parent = m_externBones;
-			else
-				parent = m_baseBones;
+			parent = activeBones;
 		}
 		else
 		{

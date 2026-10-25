@@ -22,6 +22,7 @@ struct TMAnimation
 };
 
 class CMotion;
+class CSkeleton;
 
 struct SkinVertex
 {
@@ -143,10 +144,14 @@ public:
 	void SaveGMObject(CFile& file, GMObject& obj);
 
 	int GetFrameCount() const { return m_frameCount; }
+	void SetFrameCount(int fc) { m_frameCount = fc; }
+
 	int GetBoneCount() const { return m_boneCount; }
 	const Bounds& GetBounds() const { return m_bounds; }
 	bool HasLOD() const { return m_LOD; }
 	bool HasSkin() const { return m_hasSkin; }
+	bool HasAnimation() const { return m_frameCount > 0 || m_motion != nullptr; }
+
 	int GetID() const { return m_ID; }
 	void SetID(int id) { m_ID = id; }
 
@@ -175,6 +180,8 @@ public:
 	CMotion* GetMotion() const { return m_motion; }
 	D3DXMATRIX* GetBaseBones() const { return m_baseBones; }
 	D3DXMATRIX* GetBaseInvBones() const { return m_baseInvBones; }
+	D3DXMATRIX* GetEffectiveBones() const { return m_baseBones ? m_baseBones : m_externBones; }
+	D3DXMATRIX* GetEffectiveInvBones() const { return m_baseInvBones ? m_baseInvBones : m_externInvBones; }
 
 	void SetExternBones(D3DXMATRIX* bones, D3DXMATRIX* invBones)
 	{
@@ -184,6 +191,11 @@ public:
 			m_externInvBones = invBones;
 		}
 	}
+
+	// External animation & skeleton loading
+	bool LoadMotion(const std::string& filename);
+	bool LoadSkeleton(const std::string& filename);
+	void UnloadMotion();
 
 	void Animate(float currentFrame, int nextFrame, int lod = 0);
 	void LoadTextures(const std::string& modelPath);

@@ -19,6 +19,8 @@ set(SOURCES
     src/model/Model.cpp
     src/model/AnimatedMesh.cpp
     src/model/ModelMng.cpp
+    src/model/SceneManager.cpp
+    src/model/FolderScanner.cpp
     src/viewer/Camera.cpp
     src/viewer/Renderer.cpp
     src/ui/UI.cpp
@@ -29,10 +31,8 @@ add_executable(model_viewer ${SOURCES})
 
 target_link_libraries(model_viewer
     ${CMAKE_CURRENT_SOURCE_DIR}/Lib/raylib/lib/libraylib.a
-    glfw
     m
     pthread
     dl
     rt
-    X11
 )

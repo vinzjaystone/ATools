@@ -228,6 +228,43 @@ D3DXQUATERNION* D3DXQuaternionIdentity(D3DXQUATERNION* out)
 	return out;
 }
 
+D3DXQUATERNION* D3DXQuaternionRotationYawPitchRoll(D3DXQUATERNION* out, float yaw, float pitch, float roll)
+{
+	if (!out) return nullptr;
+	float halfYaw = yaw * 0.5f;
+	float halfPitch = pitch * 0.5f;
+	float halfRoll = roll * 0.5f;
+
+	float cosYaw = std::cos(halfYaw);
+	float sinYaw = std::sin(halfYaw);
+	float cosPitch = std::cos(halfPitch);
+	float sinPitch = std::sin(halfPitch);
+	float cosRoll = std::cos(halfRoll);
+	float sinRoll = std::sin(halfRoll);
+
+	out->x = cosYaw * sinPitch * cosRoll + sinYaw * cosPitch * sinRoll;
+	out->y = sinYaw * cosPitch * cosRoll - cosYaw * sinPitch * sinRoll;
+	out->z = cosYaw * cosPitch * sinRoll - sinYaw * sinPitch * cosRoll;
+	out->w = cosYaw * cosPitch * cosRoll + sinYaw * sinPitch * sinRoll;
+	return out;
+}
+
+D3DXQUATERNION* D3DXQuaternionRotationAxis(D3DXQUATERNION* out, const D3DXVECTOR3* axis, float angle)
+{
+	if (!out || !axis) return nullptr;
+	D3DXVECTOR3 normAxis;
+	D3DXVec3Normalize(&normAxis, axis);
+
+	float halfAngle = angle * 0.5f;
+	float sinHalf = std::sin(halfAngle);
+
+	out->x = normAxis.x * sinHalf;
+	out->y = normAxis.y * sinHalf;
+	out->z = normAxis.z * sinHalf;
+	out->w = std::cos(halfAngle);
+	return out;
+}
+
 D3DXQUATERNION* D3DXQuaternionSlerp(D3DXQUATERNION* out, const D3DXQUATERNION* q1, const D3DXQUATERNION* q2, float t)
 {
 	if (!out || !q1 || !q2) return nullptr;

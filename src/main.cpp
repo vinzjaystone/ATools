@@ -2,46 +2,51 @@
 #include "core/Types.h"
 #include "core/File.h"
 #include "model/Object3D.h"
+#include "model/SceneManager.h"
+#include "model/FolderScanner.h"
 #include "model/TextureMng.h"
 #include "model/ModelMng.h"
 #include "viewer/Camera.h"
 #include "viewer/Renderer.h"
 #include "ui/UI.h"
 #include <iostream>
+#include <filesystem>
+
+namespace fs = std::filesystem;
 
 int main(int argc, char* argv[])
 {
 	// Configure Window flags
 	SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT);
-	InitWindow(1280, 800, "Flyff .o3d Model Viewer & Editor");
-	SetWindowMinSize(900, 600);
+	InitWindow(1360, 840, "Flyff .o3d Model Viewer & Composite Editor");
+	SetWindowMinSize(960, 600);
 	SetTargetFPS(60);
 
 	// Application state
-	CObject3D* model = nullptr;
-	int currentLOD = 0;
-	float animSpeed = 1.0f;
-	bool isPlaying = true;
-
+	SceneManager scene;
 	OrbitCamera camera;
 	SceneRenderer renderer;
 	RenderSettings settings;
 	UserInterface ui;
 
-	// Load model if path passed as command line argument
+	// Load initial model if path passed as command line argument
 	if (argc > 1)
 	{
 		std::string initialPath = argv[1];
-		CObject3D* newModel = new CObject3D();
-		if (newModel->Load(initialPath))
+		if (scene.LoadBaseModel(initialPath))
 		{
-			model = newModel;
-			camera.FrameModel(model->GetBounds());
-			ui.ShowStatusMessage("Loaded: " + GetFileName(initialPath));
+			camera.FrameModel(scene.GetCombinedBounds());
+			ui.ShowStatusMessage("Loaded model: " + SceneManager::ExtractFileName(initialPath));
+
+			// Point folder scanner to parent directory of loaded file
+			fs::path p(initialPath);
+			if (p.has_parent_path())
+			{
+				ui.GetScanner().SetCurrentFolder(p.parent_path().string());
+			}
 		}
 		else
 		{
-			delete newModel;
 			ui.ShowStatusMessage("Failed to load: " + initialPath, 4.0f, true);
 		}
 	}
@@ -55,126 +60,139 @@ int main(int argc, char* argv[])
 		if (IsFileDropped())
 		{
 			FilePathList droppedFiles = LoadDroppedFiles();
-			if (droppedFiles.count > 0)
+			for (unsigned int i = 0; i < droppedFiles.count; i++)
 			{
-				std::string droppedPath = droppedFiles.paths[0];
-				CObject3D* newModel = new CObject3D();
-				if (newModel->Load(droppedPath))
+				std::string droppedPath = droppedFiles.paths[i];
+				std::string ext = fs::path(droppedPath).extension().string();
+				std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+
+				if (ext == ".o3d")
 				{
-					if (model) delete model;
-					model = newModel;
-					currentLOD = 0;
-					camera.FrameModel(model->GetBounds());
-					ui.ShowStatusMessage("Loaded: " + GetFileName(droppedPath));
+					if (i == 0 && scene.GetPartCount() == 0)
+					{
+						if (scene.LoadBaseModel(droppedPath))
+						{
+							camera.FrameModel(scene.GetCombinedBounds());
+							ui.ShowStatusMessage("Loaded base model: " + SceneManager::ExtractFileName(droppedPath));
+						}
+					}
+					else
+					{
+						if (scene.AppendModel(droppedPath))
+						{
+							camera.FrameModel(scene.GetCombinedBounds());
+							ui.ShowStatusMessage("Appended part: " + SceneManager::ExtractFileName(droppedPath));
+						}
+					}
 				}
-				else
+				else if (ext == ".mot")
 				{
-					delete newModel;
-					ui.ShowStatusMessage("Error loading dropped file: " + GetFileName(droppedPath), 4.0f, true);
+					if (scene.LoadMotion(droppedPath))
+						ui.ShowStatusMessage("Loaded motion: " + SceneManager::ExtractFileName(droppedPath));
 				}
+				else if (ext == ".bon")
+				{
+					if (scene.LoadSkeleton(droppedPath))
+						ui.ShowStatusMessage("Loaded skeleton: " + SceneManager::ExtractFileName(droppedPath));
+				}
+
+				// Update folder scanner to dropped file directory
+				fs::path p(droppedPath);
+				if (p.has_parent_path())
+					ui.GetScanner().SetCurrentFolder(p.parent_path().string());
 			}
 			UnloadDroppedFiles(droppedFiles);
 		}
 
-		// Handle Open File request from UI
-		std::string fileToOpen = ui.GetSelectedFileToOpen();
-		if (!fileToOpen.empty())
-		{
-			CObject3D* newModel = new CObject3D();
-			if (newModel->Load(fileToOpen))
-			{
-				if (model) delete model;
-				model = newModel;
-				currentLOD = 0;
-				camera.FrameModel(model->GetBounds());
-				ui.ShowStatusMessage("Loaded: " + GetFileName(fileToOpen));
-			}
-			else
-			{
-				delete newModel;
-				ui.ShowStatusMessage("Failed to open file: " + GetFileName(fileToOpen), 4.0f, true);
-			}
-			ui.ClearFileRequests();
-		}
-
-		// Handle Save File request from UI
-		std::string fileToSave = ui.GetSelectedFileToSave();
-		if (!fileToSave.empty() && model)
-		{
-			if (model->Save(fileToSave))
-				ui.ShowStatusMessage("Saved model successfully: " + GetFileName(fileToSave));
-			else
-				ui.ShowStatusMessage("Error saving model: " + GetFileName(fileToSave), 4.0f, true);
-			ui.ClearFileRequests();
-		}
-
 		// Handle Keyboard Shortcuts
-		if (!IsKeyDown(KEY_LEFT_CONTROL) && !IsKeyDown(KEY_RIGHT_CONTROL))
+		bool ctrlDown = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+		bool shiftDown = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+
+		if (!ctrlDown)
 		{
-			if (IsKeyPressed(KEY_R))
+			if (IsKeyPressed(KEY_F))
 			{
-				if (model)
-					camera.FrameModel(model->GetBounds());
-				else
-					camera.Reset();
+				if (scene.GetPartCount() > 0)
+					camera.FrameModel(scene.GetCombinedBounds());
 			}
+			if (IsKeyPressed(KEY_R))
+				camera.Reset();
 			if (IsKeyPressed(KEY_G))
 				settings.showGrid = !settings.showGrid;
+			if (IsKeyPressed(KEY_A))
+				settings.showAxes = !settings.showAxes;
 			if (IsKeyPressed(KEY_B))
 				settings.showBounds = !settings.showBounds;
 			if (IsKeyPressed(KEY_C))
 				settings.showCollision = !settings.showCollision;
+			if (IsKeyPressed(KEY_L))
+				settings.enableLighting = !settings.enableLighting;
+			if (IsKeyPressed(KEY_W))
+				settings.fillMode = (settings.fillMode == FILL_WIREFRAME) ? FILL_SOLID : FILL_WIREFRAME;
 			if (IsKeyPressed(KEY_SPACE))
-				isPlaying = !isPlaying;
-			if (IsKeyPressed(KEY_ONE) && model && model->HasLOD())
-				currentLOD = 0;
-			if (IsKeyPressed(KEY_TWO) && model && model->HasLOD())
-				currentLOD = 1;
-			if (IsKeyPressed(KEY_THREE) && model && model->HasLOD())
-				currentLOD = 2;
+				scene.TogglePlay();
+			if (IsKeyPressed(KEY_LEFT))
+				scene.StepFrame(-1);
+			if (IsKeyPressed(KEY_RIGHT))
+				scene.StepFrame(1);
+
+			// LOD shortcuts for active part
+			ScenePart* activePart = scene.GetPart(scene.GetActivePartIndex());
+			if (activePart && activePart->model && activePart->model->HasLOD())
+			{
+				if (IsKeyPressed(KEY_ONE)) activePart->currentLOD = 0;
+				if (IsKeyPressed(KEY_TWO)) activePart->currentLOD = 1;
+				if (IsKeyPressed(KEY_THREE)) activePart->currentLOD = 2;
+			}
 		}
-		else
+		else // Control is held
 		{
 			if (IsKeyPressed(KEY_O))
-				ui.OpenFileDialog(false);
-			if (IsKeyPressed(KEY_S) && model)
+				ui.OpenFileDialog(DIALOG_OPEN_MODEL);
+			if (IsKeyPressed(KEY_A) && shiftDown)
+				ui.OpenFileDialog(DIALOG_APPEND_MODEL);
+			if (IsKeyPressed(KEY_M))
+				ui.OpenFileDialog(DIALOG_OPEN_MOTION);
+			if (IsKeyPressed(KEY_S))
 			{
-				std::string fn = model->GetLoadedFilename();
-				if (!fn.empty())
+				CObject3D* activeModel = scene.GetActiveModel();
+				if (activeModel)
 				{
-					if (model->Save(fn))
-						ui.ShowStatusMessage("Model saved: " + GetFileName(fn));
+					std::string fn = activeModel->GetLoadedFilename();
+					if (!fn.empty())
+					{
+						if (activeModel->Save(fn))
+							ui.ShowStatusMessage("Model saved: " + SceneManager::ExtractFileName(fn));
+						else
+							ui.ShowStatusMessage("Error saving model: " + SceneManager::ExtractFileName(fn), 4.0f, true);
+					}
 					else
-						ui.ShowStatusMessage("Error saving model: " + GetFileName(fn), 4.0f, true);
+						ui.OpenFileDialog(DIALOG_SAVE_MODEL);
 				}
-				else
-					ui.OpenFileDialog(true);
 			}
 		}
 
-		// Update 3D Orbit Camera (only when mouse is in viewport)
+		// Update Animations
+		scene.UpdateAnimation(deltaTime);
+
+		// Update 3D Orbit Camera (only when mouse is inside viewport)
 		camera.Update(ui.GetViewportRect());
 
 		// Begin Frame Rendering
 		BeginDrawing();
-		ClearBackground(Color{ 30, 33, 40, 255 });
+		ClearBackground(Color{ 22, 24, 28, 255 });
 
-		// 1. Render 3D Viewport Scene
-		renderer.Render(model, currentLOD, camera, ui.GetViewportRect(), settings);
+		// 1. Render 3D Viewport Scene with all composite parts
+		renderer.RenderScene(scene, camera, ui.GetViewportRect(), settings);
 
-		// 2. Render UI (Toolbar, Sidebar Panels, Inspector, Animation Controls, Status Bar)
-		ui.UpdateAndDraw(model, currentLOD, camera, settings, animSpeed, isPlaying, deltaTime);
+		// 2. Render UI (Top bar, Left library/parts tabs, Right inspectors, Bottom timeline scrubber, Status bar)
+		ui.UpdateAndDraw(scene, camera, settings, deltaTime);
 
 		EndDrawing();
 	}
 
 	// Cleanup
-	if (model)
-	{
-		delete model;
-		model = nullptr;
-	}
-
+	scene.ClearAll();
 	CTextureMng::Destroy();
 	CModelMng::Destroy();
 
