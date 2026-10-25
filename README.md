@@ -34,10 +34,14 @@ Powered by **raylib** and **raygui**, completely free of Qt and Direct3D 9 depen
 - **Combined Auto-Framing**: Frame Camera (`F`) automatically calculates the bounding box of all visible parts combined.
 
 ### 3. Motion & Animation Player (`.mot`, `.ani`, `.chr`, `.bon`)
+- **Auto-Discovery of All Available Animations**:
+  - When loading a character model or part (e.g. `mvr_male.o3d`, `part_m_*.o3d`, `mvr_clockwork.o3d`), the viewer automatically discovers and loads **all available animations** in the directory (`walk`, `run`, `idle`, `attack1`, `attack2`, `jump`, `sit`, `die`, etc.).
+  - Select and play any animation with a single click from the **Character Animations** panel or cycle seamlessly through animations with `[` / `]` or `Ctrl + Left` / `Right`.
 - **Animation Controls**:
   - Play / Pause toggle (`Space`).
   - Frame Step buttons (`<` and `>` arrow keys).
   - First frame rewind (`|<`).
+  - **Quick Motion Switcher**: `[Prev Motion]` and `[Next Motion]` buttons in the bottom timeline.
   - **Interactive Timeline Scrubber**: Drag slider to scrub across keyframes with real-time model and bone posing!
   - Playback Speed Slider ($0.1\times \dots 3.0\times$).
   - Loop toggle (Loop playback vs Single pass).
@@ -162,6 +166,8 @@ You can drag and drop `.o3d` models, `.mot` / `.ani` animations, or `.chr` / `.b
 | `Ctrl + M` | Load Motion (`.mot` / `.ani`) Dialog |
 | `Ctrl + K` | Load Skeleton (`.chr` / `.bon`) Dialog |
 | `Ctrl + S` | Save Active Model (`.o3d`) |
+| `[` / `]` | Previous / Next Model Animation |
+| `Ctrl + Left / Right` | Previous / Next Model Animation |
 | `Space` | Play / Pause Animation |
 | `Left / Right` | Step Animation 1 Frame Backward / Forward |
 | `F` | Focus / Frame Camera on All Visible Models |
