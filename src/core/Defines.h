@@ -1,0 +1,28 @@
+#ifndef DEFINES_H
+#define DEFINES_H
+
+enum EModelParts
+{
+	PARTS_HEAD = 0,
+	PARTS_UPPER_BODY = 1,
+	PARTS_LOWER_BODY = 2,
+	PARTS_HAND = 3,
+	PARTS_FOOT = 4,
+	PARTS_HAIR = 5,
+	PARTS_CAP = 6,
+	PARTS_CLOAK = 7,
+	PARTS_RWEAPON = 8,
+	PARTS_LWEAPON = 9,
+	PARTS_SHIELD = 10,
+	PARTS_WING = 11,
+	PARTS_MAX = 21
+};
+
+enum ESex
+{
+	SEX_MALE = 0,
+	SEX_FEMALE = 1,
+	SEX_SEXLESS = 2
+};
+
+#endif // DEFINES_H
