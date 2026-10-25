@@ -122,6 +122,8 @@ D3DXMATRIX* D3DXMatrixTranspose(D3DXMATRIX* out, const D3DXMATRIX* in);
 D3DXMATRIX* D3DXMatrixInverse(D3DXMATRIX* out, float* determinant, const D3DXMATRIX* in);
 
 D3DXQUATERNION* D3DXQuaternionIdentity(D3DXQUATERNION* out);
+D3DXQUATERNION* D3DXQuaternionRotationYawPitchRoll(D3DXQUATERNION* out, float yaw, float pitch, float roll);
+D3DXQUATERNION* D3DXQuaternionRotationAxis(D3DXQUATERNION* out, const D3DXVECTOR3* axis, float angle);
 D3DXQUATERNION* D3DXQuaternionSlerp(D3DXQUATERNION* out, const D3DXQUATERNION* q1, const D3DXQUATERNION* q2, float t);
 
 D3DXVECTOR3* D3DXVec3Lerp(D3DXVECTOR3* out, const D3DXVECTOR3* v1, const D3DXVECTOR3* v2, float t);

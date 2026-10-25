@@ -1,6 +1,6 @@
 CXX ?= g++
 CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra -Wno-unused-parameter -Wno-unused-function -Wno-missing-field-initializers -Wno-stringop-truncation -Wno-class-memaccess -Isrc -ILib/raylib/include
-LDFLAGS ?= Lib/raylib/lib/libraylib.a -lglfw -lm -lpthread -ldl -lrt -lX11
+LDFLAGS ?= Lib/raylib/lib/libraylib.a -lm -lpthread -ldl -lrt
 
 TARGET = model_viewer
 
@@ -12,6 +12,8 @@ SRCS = src/core/D3DXMath.cpp \
        src/model/Model.cpp \
        src/model/AnimatedMesh.cpp \
        src/model/ModelMng.cpp \
+       src/model/SceneManager.cpp \
+       src/model/FolderScanner.cpp \
        src/viewer/Camera.cpp \
        src/viewer/Renderer.cpp \
        src/ui/UI.cpp \

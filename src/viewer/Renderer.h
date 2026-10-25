@@ -5,6 +5,7 @@
 #include "../core/Types.h"
 #include "../core/D3DXMath.h"
 #include "../model/Object3D.h"
+#include "../model/SceneManager.h"
 #include "Camera.h"
 
 struct RenderSettings
@@ -45,6 +46,11 @@ public:
 	SceneRenderer();
 	~SceneRenderer();
 
+	// Render full scene with composite parts
+	void RenderScene(const SceneManager& scene, const OrbitCamera& camera,
+	                 Rectangle viewportRect, const RenderSettings& settings);
+
+	// Render single standalone model
 	void Render(const CObject3D* model, int lod, const OrbitCamera& camera,
 	            Rectangle viewportRect, const RenderSettings& settings);
 
@@ -56,13 +62,16 @@ public:
 	void DrawBones(const CObject3D* model);
 
 private:
+	void _drawModelInternal(const CObject3D* model, int lod, const D3DXMATRIX& rootTransform,
+	                        const RenderSettings& settings, bool isSelectedPart);
+
 	void _drawGMObject(const GMObject& obj, const D3DXMATRIX& transform, int lod,
 	                   const RenderSettings& settings, const CObject3D* model,
-	                   int objIdx);
+	                   int objIdx, bool isSelectedPart);
 
-	void _drawSkinGMObject(const GMObject& obj, int lod,
+	void _drawSkinGMObject(const GMObject& obj, const D3DXMATRIX& rootTransform, int lod,
 	                       const RenderSettings& settings, const CObject3D* model,
-	                       int objIdx);
+	                       int objIdx, bool isSelectedPart);
 };
 
 #endif // RENDERER_H

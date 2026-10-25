@@ -1,41 +1,68 @@
-# Flyff O3D Model Viewer & Editor (Linux / raylib)
+# Flyff O3D Model Viewer & Composite Editor (Linux / raylib)
 
-A lightweight, standalone 3D model viewer and property editor for **Flyff (Fly For Fun) `.o3d`** models on Linux.
+A high-performance, standalone 3D model viewer, animation player, and composite character editor for **Flyff (Fly For Fun) `.o3d`** models and **`.mot`** motions on Linux.
 
-This project extracts and modernizes the Flyff 3D model pipeline from the legacy Windows/Qt/DirectX 9 ATools suite into a self-contained, cross-platform C++ application powered by **raylib** and **raygui**.
+Powered by **raylib** and **raygui**, completely free of Qt and Direct3D 9 dependencies.
 
 ---
 
 ## Features
 
-### 3D Viewport & Rendering (raylib)
+### 1. Folder Scanner & Model Library Browser
+- **Folder Scanner**: Point to any folder (or current directory) and instantly scan for all `.o3d` models, `.mot` animations, and `.bon` skeletons.
+- **Subfolder Search**: Toggle recursive folder scanning to discover assets across nested game directories (e.g., `Model/`, `Item/`, `Ctrl/`).
+- **Live Search & Filter**: Real-time keyword filter to quickly find specific models (e.g., `head`, `hair`, `hat`, `sword`, `mvr_`).
+- **One-Click Loading & Dual Modes**:
+  - **Replace Mode**: Click any `.o3d` model to load and display it as the primary base model.
+  - **Append Mode**: Click any `.o3d` model (or click the `+` button) to append it to the current scene without replacing existing models!
+  - **Motion Library**: Click any `.mot` file to immediately apply the animation to the loaded models.
+
+### 2. Multi-Part Composite Character & Scene Manager
+- **Assemble Composite Models**: Load a base body (e.g., character or monster) and append additional `.o3d` parts:
+  - Head, Hair, Hats, Helmets
+  - Upper / Lower Armor, Gloves, Boots
+  - Weapons (Swords, Shields, Bows, Wands)
+  - Cloaks, Wings, and Accessories
+- **Parts Manager Panel**:
+  - Per-part **Visibility toggle** (`[x]`).
+  - Active part selection for individual material and submesh editing.
+  - **Bone Socket Attachments**: Attach rigid weapons or accessories to specific skeleton sockets (Root, Head, Right Hand (`RH`), Left Hand (`LH`), Back, etc.) or standard skeletal skinning.
+  - Per-part LOD level control (`LOD 0`, `1`, `2`).
+  - Individual part removal (`X`) and `Clear Appended Parts`.
+- **Combined Auto-Framing**: Frame Camera (`F`) automatically calculates the bounding box of all visible parts combined.
+
+### 3. Motion & Animation Player (`.mot` & `.bon`)
+- **Animation Controls**:
+  - Play / Pause toggle (`Space`).
+  - Frame Step buttons (`<` and `>` arrow keys).
+  - First frame rewind (`|<`).
+  - **Interactive Timeline Scrubber**: Drag slider to scrub across keyframes with real-time model and bone posing!
+  - Playback Speed Slider ($0.1\times \dots 3.0\times$).
+  - Loop toggle (Loop playback vs Single pass).
+  - Keyframe counter display: `Frame: X / Total: Y`.
+- **Synchronized Skeletal Skinning**:
+  - Appended parts automatically inherit the animated skeleton in real time, moving together seamlessly in sync with the motion.
+- **Skeleton Bones Inspector**: Browse all skeleton joints with IDs, parent linkages, and joint names (e.g., `Bip01 Pelvis`, `Bip01 Spine`, `Bip01 Head`, `RH`, `LH`).
+
+### 4. 3D Viewport & Rendering Pipeline
 - **Interactive Orbit Camera**: Orbit (Right-click drag), Pan (Middle-click drag or Shift + Right-click drag), Zoom (Mouse wheel), Smooth auto-framing (`F`).
 - **Render Modes & Overlays**:
-  - Textured mesh rendering with alpha blending and dynamic lighting.
+  - Textured rendering with alpha blending and dynamic lighting.
   - Wireframe overlay mode (`W`).
-  - Normal vector visualization (`N`).
   - Skeletal bone hierarchy & joint rendering (`B`).
   - 3D Bounding Box visualization (`C`).
   - Coordinate axes (X = Red, Y = Green, Z = Blue) (`A`) and ground reference grid (`G`).
-  - Dynamic viewport background color toggle.
-- **Skeletal & Mesh Animation**: Support for Flyff bone animations (`.mot`) with playback, pause, and speed controls.
+  - Viewport background color toggle button.
 
-### Model Inspection & Hierarchy
-- **Real-Time Statistics**: Total vertex count, triangle count, submesh count, bone count, bounding box min/max, format version, and flags.
-- **Mesh Hierarchy Browser**: Browse all sub-objects in the `.o3d` file with vertex and triangle counts, and inspect/edit them individually.
-
-### Model & Material Property Editing
-- **Object Attributes**: Edit object name, visibility, collision flag, pickable flag, billboard type (None, Y-Axis, Full), and alpha opacity.
-- **Material Editor**:
-  - Edit Ambient, Diffuse, and Specular RGBA color channels with real-time visual feedback.
-  - View and edit assigned texture filenames.
-  - Toggle Two-Sided polygon rendering.
+### 5. Model & Material Property Inspector
+- **Submesh & Material Editor**:
+  - Ambient, Diffuse, Specular RGBA color pickers.
+  - Texture filename text edit and reload.
+  - Two-Sided polygon rendering toggle.
   - UV Scrolling animation parameters ($U, V$ speeds).
-- **Material Effects / Blocks**: Inspect and edit blending effects and blend amounts (e.g., additive blending, glow, specular effects).
-
-### Exact `.o3d` Binary Serialization
-- 100% byte-accurate serialization and deserialization matching the original Flyff `.o3d` specification across all versions (v17–v23).
-- Zero data loss when loading, modifying properties, and saving models back to disk.
+  - Material Effect Blocks (Additive glow, opacity, blending).
+- **100% Byte-Accurate Binary Serialization**:
+  - Full load and save compatibility preserving the original Flyff `.o3d` format specifications (v17–v23).
 
 ---
 
@@ -44,7 +71,7 @@ This project extracts and modernizes the Flyff 3D model pipeline from the legacy
 ```
 ATools/
 ├── Lib/
-│   └── raylib/            # Bundled raylib & raygui headers and x86_64 static library
+│   └── raylib/            # Bundled raylib & raygui headers and static library
 │       ├── include/       # raylib.h, raymath.h, rlgl.h, raygui.h
 │       └── lib/           # libraylib.a (built for Linux x86_64)
 ├── src/
@@ -52,20 +79,25 @@ ATools/
 │   │   ├── Types.h        # Cross-platform basic types & definitions
 │   │   ├── File.h/.cpp    # High-fidelity binary stream serialization
 │   │   └── D3DXMath.h/.cpp# Complete D3D9 vector/matrix/quaternion math library
-│   ├── model/             # Flyff 3D model, motion, and texture management
+│   ├── model/             # Flyff 3D model, composite scene, motion, and textures
 │   │   ├── Object3D.h/.cpp# Flyff .o3d mesh format parser and serializer
-│   │   ├── Motion.h/.cpp  # Skeleton and bone animation parser
-│   │   ├── Model.h/.cpp   # Composite model & sub-object container
-│   │   ├── AnimatedMesh.h/.cpp # Keyframe interpolation and bone skinning
+│   │   ├── Motion.h/.cpp  # Skeleton and bone animation parser (.mot / .bon)
+│   │   ├── SceneManager.h/.cpp # Multi-part composite character & scene manager
+│   │   ├── FolderScanner.h/.cpp# Directory scanner and file filter
 │   │   ├── TextureMng.h/.cpp   # Raylib Texture2D resource caching
-│   │   └── ModelMng.h/.cpp# Model registry and caching
+│   │   └── AnimatedMesh.h/.cpp # Keyframe interpolation and bone skinning
 │   ├── viewer/            # Viewport & 3D rendering pipeline
 │   │   ├── Camera.h/.cpp  # Smooth orbit/pan/zoom camera controller
-│   │   └── Renderer.h/.cpp# Raylib/OpenGL drawing routines, overlays, & debug views
+│   │   └── Renderer.h/.cpp# Multi-part drawing routines, overlays, & debug views
 │   ├── ui/                # Graphical user interface (raygui)
-│   │   └── UI.h/.cpp      # Toolbar, side panels, inspector, & file browser modal
+│   │   └── UI.h/.cpp      # Library browser, parts manager, timeline, inspector
 │   └── main.cpp           # Application entry point and interactive main loop
-├── sample_cube.o3d        # Sample test model
+├── samples/               # Sample models and animations for testing
+│   ├── model_body.o3d     # Base torso model
+│   ├── model_head.o3d     # Head part model
+│   ├── part_hat.o3d       # Hat accessory model
+│   ├── wea_sword.o3d      # Sword weapon model
+│   └── motion_walk.mot    # Walk cycle skeletal animation
 ├── Makefile               # Standard Makefile build
 ├── CMakeLists.txt         # CMake build configuration
 └── README.md
@@ -77,25 +109,13 @@ ATools/
 
 ### Prerequisites
 - GCC / G++ (supporting C++17)
-- Standard system libraries: `libglfw`, `libX11`, `pthread`, `dl`, `m`
-
-On Debian/Ubuntu systems:
-```bash
-sudo apt-get install build-essential libglfw3-dev libx11-dev
-```
+- Standard system runtime libraries: `libm`, `libpthread`, `libdl`, `librt`
 
 ### Building with `make` (Recommended)
 ```bash
 make -j$(nproc)
 ```
-This produces the standalone `model_viewer` executable in the root directory.
-
-### Building with `cmake`
-```bash
-mkdir -p build && cd build
-cmake ..
-cmake --build .
-```
+This produces the standalone `model_viewer` executable.
 
 To clean the build:
 ```bash
@@ -107,14 +127,16 @@ make clean
 ## Usage
 
 ### Launching the Application
-Run the executable directly:
 ```bash
 ./model_viewer
 ```
-Or open an `.o3d` model directly from the command line:
+Or open a model directly from the command line:
 ```bash
-./model_viewer sample_cube.o3d
+./model_viewer samples/model_body.o3d
 ```
+
+### Drag & Drop Support
+You can drag and drop `.o3d` models, `.mot` animations, or `.bon` skeletons directly onto the application window from your file manager!
 
 ---
 
@@ -131,32 +153,18 @@ Or open an `.o3d` model directly from the command line:
 ### Keyboard Shortcuts
 | Key | Action |
 |---|---|
-| `Ctrl + O` | Open File Dialog |
-| `Ctrl + S` | Save Current Model (`.o3d`) |
-| `Ctrl + Shift + S` | Save As New File (`.o3d`) |
-| `F` | Focus / Frame Camera on Model |
+| `Ctrl + O` | Open Model Dialog |
+| `Ctrl + Shift + A` | Append Model to Scene Dialog |
+| `Ctrl + M` | Load Motion (`.mot`) Dialog |
+| `Ctrl + S` | Save Active Model (`.o3d`) |
+| `Space` | Play / Pause Animation |
+| `Left / Right` | Step Animation 1 Frame Backward / Forward |
+| `F` | Focus / Frame Camera on All Visible Models |
 | `R` | Reset Camera to Default View |
 | `W` | Toggle Wireframe Overlay |
-| `N` | Toggle Normal Vectors |
-| `B` | Toggle Bones / Skeleton Display |
 | `G` | Toggle Ground Grid |
 | `A` | Toggle Coordinate Axes |
-| `C` | Toggle Bounding Box / Collision Bounds |
+| `B` | Toggle Bounding Box |
+| `C` | Toggle Collision Mesh |
 | `L` | Toggle Viewport Lighting |
-| `Space` | Play / Pause Animation |
-| `Escape` | Deselect Object / Close Dialogs |
-
----
-
-## UI Guide
-
-- **Top Toolbar**: Fast access to file operations (Open, Save, Save As), camera reset, viewport overlay toggles (Wireframe, Normals, Bones, Grid, Axes, Bounds, Lighting), and background color cycling.
-- **Left Panel (Model Inspector)**:
-  - **General Info**: Format version, object count, bone count, animated status, and total polygon/vertex stats.
-  - **Hierarchy Tree**: Click any submesh to select and inspect it in the right panel.
-  - **Model Settings**: Global collision toggle and texture coordinate scrolling parameters ($U, V$).
-- **Right Panel (Submesh & Material Editor)**:
-  - **Object Attributes**: Name, ID, Parent ID, Visibility, Collision, Billboard mode, and Alpha Opacity slider.
-  - **Material Properties**: Submesh material selector, RGBA color pickers (Ambient, Diffuse, Specular), Two-Sided toggle, and Texture filename editor.
-  - **Material Effect Blocks**: Blend effects and blend amount slider.
-- **Built-in File Browser**: Seamlessly browse local directories to load and save `.o3d` files directly within the raylib UI.
+| `1` / `2` / `3` | Switch Active Part LOD Level (0, 1, 2) |

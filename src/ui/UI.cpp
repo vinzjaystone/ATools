@@ -1,47 +1,41 @@
-#include "UI.h"
-#include "raymath.h"
-#include "../core/File.h"
-#include "../model/TextureMng.h"
-#include <dirent.h>
-#include <sys/stat.h>
-#include <algorithm>
-#include <cstdio>
-#include <iostream>
-
 #define RAYGUI_IMPLEMENTATION
-#include "raygui.h"
+#include "../ui/UI.h"
+#include "../../Lib/raylib/include/raygui.h"
+#include "../model/TextureMng.h"
+#include "../model/Motion.h"
+#include <iostream>
+#include <filesystem>
+#include <algorithm>
+#include <sstream>
+#include <iomanip>
 
-// Helper function to check if a file is an .o3d file
-static bool IsO3DFile(const std::string& filename)
-{
-	std::string ext = GetFileExtension(filename);
-	std::string extLower = ext;
-	std::transform(extLower.begin(), extLower.end(), extLower.begin(), ::tolower);
-	return extLower == "o3d";
-}
+namespace fs = std::filesystem;
 
 UserInterface::UserInterface()
-	: m_statusMessage("Ready. Flyff .o3d Model Viewer & Editor"),
+	: m_statusMessage("Ready. Use toolbar or Library panel to load Flyff .o3d models and .mot animations."),
 	  m_statusTimer(5.0f),
 	  m_statusIsError(false),
 	  m_leftTab(0),
 	  m_rightTab(0),
+	  m_libraryTab(0),
+	  m_appendMode(false),
+	  m_libraryScroll(0),
+	  m_scenePartsScroll(0),
+	  m_hierarchyScroll(0),
+	  m_bonesScroll(0),
 	  m_editingTexture(false)
 {
+	std::memset(m_searchBuffer, 0, sizeof(m_searchBuffer));
 	std::memset(m_texNameBuffer, 0, sizeof(m_texNameBuffer));
 
-	// Initialize raygui default style
-	GuiSetStyle(DEFAULT, TEXT_SIZE, 13);
+	// Style configurations for raygui
+	GuiSetStyle(DEFAULT, TEXT_SIZE, 12);
 	GuiSetStyle(DEFAULT, BACKGROUND_COLOR, 0x22252cff);
-	GuiSetStyle(DEFAULT, BASE_COLOR_NORMAL, 0x2e323bff);
-	GuiSetStyle(DEFAULT, BASE_COLOR_FOCUSED, 0x3d424eff);
-	GuiSetStyle(DEFAULT, BASE_COLOR_PRESSED, 0x1f2228ff);
-	GuiSetStyle(DEFAULT, TEXT_COLOR_NORMAL, 0xe0e0e0ff);
-	GuiSetStyle(DEFAULT, TEXT_COLOR_FOCUSED, 0xffffffff);
-	GuiSetStyle(DEFAULT, TEXT_COLOR_PRESSED, 0x80c0ffff);
-	GuiSetStyle(DEFAULT, BORDER_COLOR_NORMAL, 0x4a4f5cff);
-	GuiSetStyle(DEFAULT, BORDER_COLOR_FOCUSED, 0x6080a0ff);
-	GuiSetStyle(DEFAULT, BORDER_COLOR_PRESSED, 0x3a6090ff);
+	GuiSetStyle(LABEL, TEXT_COLOR_NORMAL, 0xd0d5e0ff);
+	GuiSetStyle(BUTTON, TEXT_COLOR_NORMAL, 0xedf0f5ff);
+
+	// Initial scan of current directory
+	m_scanner.Scan("./", false);
 }
 
 UserInterface::~UserInterface()
@@ -55,741 +49,18 @@ void UserInterface::ShowStatusMessage(const std::string& msg, float duration, bo
 	m_statusIsError = isError;
 }
 
-void UserInterface::_updateLayout(int screenWidth, int screenHeight, bool hasAnimation)
+void UserInterface::OpenFileDialog(EFileDialogTarget target)
 {
-	float topBarHeight = 38.0f;
-	float statusBarHeight = 26.0f;
-	float bottomBarHeight = hasAnimation ? 48.0f : 0.0f;
-	float leftPanelWidth = 270.0f;
-	float rightPanelWidth = 290.0f;
-
-	m_topBarRect = Rectangle{ 0, 0, (float)screenWidth, topBarHeight };
-	m_statusBarRect = Rectangle{ 0, (float)screenHeight - statusBarHeight, (float)screenWidth, statusBarHeight };
-
-	float mainHeight = (float)screenHeight - topBarHeight - statusBarHeight - bottomBarHeight;
-
-	m_leftPanelRect = Rectangle{ 0, topBarHeight, leftPanelWidth, mainHeight + bottomBarHeight };
-	m_rightPanelRect = Rectangle{ (float)screenWidth - rightPanelWidth, topBarHeight, rightPanelWidth, mainHeight + bottomBarHeight };
-
-	float viewportX = leftPanelWidth;
-	float viewportWidth = (float)screenWidth - leftPanelWidth - rightPanelWidth;
-
-	m_viewportRect = Rectangle{ viewportX, topBarHeight, viewportWidth, mainHeight };
-	m_bottomBarRect = Rectangle{ viewportX, topBarHeight + mainHeight, viewportWidth, bottomBarHeight };
-}
-
-void UserInterface::UpdateAndDraw(CObject3D*& model, int& currentLOD, OrbitCamera& camera,
-                                  RenderSettings& settings, float& animSpeed, bool& isPlaying,
-                                  float deltaTime)
-{
-	int screenWidth = GetScreenWidth();
-	int screenHeight = GetScreenHeight();
-
-	bool hasAnimation = (model != nullptr && model->GetFrameCount() > 0);
-	_updateLayout(screenWidth, screenHeight, hasAnimation);
-
-	// Update status message timer
-	if (m_statusTimer > 0.0f)
-	{
-		m_statusTimer -= deltaTime;
-		if (m_statusTimer <= 0.0f)
-			m_statusMessage = "Ready.";
-	}
-
-	// 1. Draw Top Toolbar
-	_drawTopBar(model, currentLOD, camera, settings);
-
-	// 2. Draw Left Panel (Model Info & Hierarchy)
-	_drawLeftPanel(model, currentLOD, settings);
-
-	// 3. Draw Right Panel (Inspector & Editing Tools)
-	_drawRightPanel(model, currentLOD, settings);
-
-	// 4. Draw Bottom Animation Bar (if animated)
-	if (hasAnimation)
-		_drawBottomBar(model, currentLOD, animSpeed, isPlaying, deltaTime);
-
-	// 5. Draw Status Bar
-	_drawStatusBar();
-
-	// 6. Draw Modal File Dialog (if open)
-	if (m_fileDialog.active)
-		_drawFileDialog();
-}
-
-void UserInterface::_drawTopBar(CObject3D*& model, int& currentLOD, OrbitCamera& camera,
-                                RenderSettings& settings)
-{
-	DrawRectangleRec(m_topBarRect, Color{ 30, 33, 40, 255 });
-	DrawLine(0, (int)m_topBarRect.height, GetScreenWidth(), (int)m_topBarRect.height, Color{ 55, 60, 72, 255 });
-
-	float x = 10.0f;
-	float y = 5.0f;
-	float btnH = 28.0f;
-
-	// Open Button
-	if (GuiButton(Rectangle{ x, y, 75, btnH }, "#001#Open..."))
-	{
-		OpenFileDialog(false);
-	}
-	x += 80.0f;
-
-	// Save Button
-	if (GuiButton(Rectangle{ x, y, 65, btnH }, "#002#Save"))
-	{
-		if (model)
-		{
-			std::string fn = model->GetLoadedFilename();
-			if (!fn.empty())
-			{
-				if (model->Save(fn))
-					ShowStatusMessage("Model saved successfully: " + GetFileName(fn), 4.0f, false);
-				else
-					ShowStatusMessage("Error saving model: " + GetFileName(fn), 4.0f, true);
-			}
-			else
-			{
-				OpenFileDialog(true);
-			}
-		}
-	}
-	x += 70.0f;
-
-	// Save As Button
-	if (GuiButton(Rectangle{ x, y, 80, btnH }, "#003#Save As..."))
-	{
-		if (model)
-			OpenFileDialog(true);
-	}
-	x += 90.0f;
-
-	// Separator
-	DrawLine((int)x, 6, (int)x, 32, Color{ 60, 65, 78, 255 });
-	x += 10.0f;
-
-	// Reset Camera / Frame Model Button
-	if (GuiButton(Rectangle{ x, y, 90, btnH }, "#028#Frame [R]"))
-	{
-		if (model)
-			camera.FrameModel(model->GetBounds());
-		else
-			camera.Reset();
-	}
-	x += 98.0f;
-
-	// Separator
-	DrawLine((int)x, 6, (int)x, 32, Color{ 60, 65, 78, 255 });
-	x += 10.0f;
-
-	// Fill Mode: Solid / Wire / Points
-	int fillModeInt = (int)settings.fillMode;
-	if (GuiToggleGroup(Rectangle{ x, y, 55, btnH }, "Solid;Wire;Point", &fillModeInt))
-	{
-		settings.fillMode = (EFillMode)fillModeInt;
-	}
-	x += 175.0f;
-
-	// Overlays: Grid, Axes, Bounds, Collision, Bones
-	GuiToggle(Rectangle{ x, y, 48, btnH }, "Grid", &settings.showGrid);
-	x += 52.0f;
-
-	GuiToggle(Rectangle{ x, y, 48, btnH }, "Axes", &settings.showAxes);
-	x += 52.0f;
-
-	GuiToggle(Rectangle{ x, y, 58, btnH }, "Bounds", &settings.showBounds);
-	x += 62.0f;
-
-	GuiToggle(Rectangle{ x, y, 45, btnH }, "Coll", &settings.showCollision);
-	x += 49.0f;
-
-	GuiToggle(Rectangle{ x, y, 52, btnH }, "Bones", &settings.showBones);
-	x += 62.0f;
-
-	// Separator
-	DrawLine((int)x, 6, (int)x, 32, Color{ 60, 65, 78, 255 });
-	x += 10.0f;
-
-	// LOD Selector (if model has LOD)
-	if (model && model->HasLOD())
-	{
-		DrawText("LOD:", (int)x, (int)y + 6, 12, Color{ 180, 185, 200, 255 });
-		x += 35.0f;
-
-		int lodChoice = currentLOD;
-		if (GuiToggleGroup(Rectangle{ x, y, 32, btnH }, "0;1;2", &lodChoice))
-		{
-			currentLOD = lodChoice;
-		}
-	}
-}
-
-void UserInterface::_drawLeftPanel(const CObject3D* model, int currentLOD, RenderSettings& settings)
-{
-	DrawRectangleRec(m_leftPanelRect, Color{ 35, 38, 46, 255 });
-	DrawLine((int)m_leftPanelRect.width, (int)m_leftPanelRect.y,
-	         (int)m_leftPanelRect.width, (int)(m_leftPanelRect.y + m_leftPanelRect.height),
-	         Color{ 55, 60, 72, 255 });
-
-	float x = m_leftPanelRect.x + 8.0f;
-	float y = m_leftPanelRect.y + 6.0f;
-	float w = m_leftPanelRect.width - 16.0f;
-
-	// Tab bar: Model Info / Sub-Objects
-	int tab = m_leftTab;
-	if (GuiToggleGroup(Rectangle{ x, y, w / 2.0f, 24 }, "Model Info;Sub-Objects", &tab))
-		m_leftTab = tab;
-	y += 30.0f;
-
-	if (m_leftTab == 0) // Model Info Tab
-	{
-		DrawRectangle(x, y, w, 22, Color{ 48, 52, 64, 255 });
-		DrawText("METADATA & GEOMETRY", x + 6, y + 5, 11, Color{ 200, 210, 230, 255 });
-		y += 28.0f;
-
-		if (model)
-		{
-			std::string fname = GetFileName(model->GetLoadedFilename());
-			if (fname.empty()) fname = "(Untitled .o3d)";
-
-			DrawText(TextFormat("File: %s", fname.c_str()), x + 4, y, 11, Color{ 220, 220, 220, 255 });
-			y += 18.0f;
-
-			DrawText(TextFormat("Model ID: %d", model->GetID()), x + 4, y, 11, Color{ 200, 200, 200, 255 });
-			y += 18.0f;
-
-			const LODGroup* group = model->GetGroup(currentLOD);
-			int totalVerts = 0;
-			int totalFaces = 0;
-			int totalMatBlocks = 0;
-			int objCount = group ? group->objectCount : 0;
-
-			if (group)
-			{
-				for (int i = 0; i < group->objectCount; i++)
-				{
-					totalVerts += group->objects[i].vertexCount;
-					totalFaces += group->objects[i].faceListCount;
-					totalMatBlocks += group->objects[i].materialBlockCount;
-				}
-			}
-
-			DrawText(TextFormat("Sub-Objects: %d", objCount), x + 4, y, 11, Color{ 180, 220, 255, 255 });
-			y += 18.0f;
-			DrawText(TextFormat("Total Vertices: %d", totalVerts), x + 4, y, 11, Color{ 180, 220, 255, 255 });
-			y += 18.0f;
-			DrawText(TextFormat("Total Triangles: %d", totalFaces), x + 4, y, 11, Color{ 180, 220, 255, 255 });
-			y += 18.0f;
-			DrawText(TextFormat("Material Blocks: %d", totalMatBlocks), x + 4, y, 11, Color{ 180, 220, 255, 255 });
-			y += 18.0f;
-			DrawText(TextFormat("Bones: %d", model->GetBoneCount()), x + 4, y, 11, Color{ 180, 220, 255, 255 });
-			y += 18.0f;
-			DrawText(TextFormat("Anim Frames: %d", model->GetFrameCount()), x + 4, y, 11, Color{ 180, 220, 255, 255 });
-			y += 18.0f;
-			DrawText(TextFormat("Has LOD: %s", model->HasLOD() ? "Yes (3 levels)" : "No"), x + 4, y, 11, Color{ 180, 220, 255, 255 });
-			y += 18.0f;
-			DrawText(TextFormat("Collision: %s", model->GetCollisionObj() ? "Present" : "None"), x + 4, y, 11, Color{ 180, 220, 255, 255 });
-			y += 24.0f;
-
-			// Bounding Box info
-			DrawRectangle(x, y, w, 22, Color{ 48, 52, 64, 255 });
-			DrawText("BOUNDING BOX", x + 6, y + 5, 11, Color{ 200, 210, 230, 255 });
-			y += 28.0f;
-
-			const Bounds& b = model->GetBounds();
-			DrawText(TextFormat("Min: (%.2f, %.2f, %.2f)", b.Min.x, b.Min.y, b.Min.z), x + 4, y, 11, Color{ 190, 190, 190, 255 });
-			y += 18.0f;
-			DrawText(TextFormat("Max: (%.2f, %.2f, %.2f)", b.Max.x, b.Max.y, b.Max.z), x + 4, y, 11, Color{ 190, 190, 190, 255 });
-			y += 18.0f;
-			float dx = b.Max.x - b.Min.x;
-			float dy = b.Max.y - b.Min.y;
-			float dz = b.Max.z - b.Min.z;
-			DrawText(TextFormat("Size: %.2f x %.2f x %.2f", dx, dy, dz), x + 4, y, 11, Color{ 120, 220, 180, 255 });
-			y += 24.0f;
-
-			// UV Scroll info
-			DrawRectangle(x, y, w, 22, Color{ 48, 52, 64, 255 });
-			DrawText("UV SCROLL SPEEDS", x + 6, y + 5, 11, Color{ 200, 210, 230, 255 });
-			y += 28.0f;
-			DrawText(TextFormat("Scroll U: %.4f | Scroll V: %.4f", model->GetScrollU(), model->GetScrollV()), x + 4, y, 11, Color{ 190, 190, 190, 255 });
-		}
-		else
-		{
-			DrawText("No model loaded.", x + 4, y, 12, Color{ 150, 150, 150, 255 });
-			y += 20.0f;
-			DrawText("Click 'Open...' to load a Flyff", x + 4, y, 11, Color{ 120, 120, 120, 255 });
-			y += 16.0f;
-			DrawText(".o3d 3D model file.", x + 4, y, 11, Color{ 120, 120, 120, 255 });
-		}
-	}
-	else // Sub-Objects (GMObjects) Tab
-	{
-		DrawRectangle(x, y, w, 22, Color{ 48, 52, 64, 255 });
-		DrawText("SUB-OBJECTS HIERARCHY", x + 6, y + 5, 11, Color{ 200, 210, 230, 255 });
-		y += 28.0f;
-
-		if (model)
-		{
-			const LODGroup* group = model->GetGroup(currentLOD);
-			if (group && group->objects && group->objectCount > 0)
-			{
-				for (int i = 0; i < group->objectCount; i++)
-				{
-					const GMObject& obj = group->objects[i];
-					bool isSel = (settings.selectedObjIndex == i);
-
-					Rectangle itemRect = { x, y, w, 40 };
-					if (isSel)
-						DrawRectangleRec(itemRect, Color{ 50, 80, 120, 255 });
-					else
-						DrawRectangleRec(itemRect, Color{ 40, 44, 54, 255 });
-
-					DrawRectangleLinesEx(itemRect, 1, isSel ? Color{ 80, 140, 220, 255 } : Color{ 50, 55, 68, 255 });
-
-					const char* typeStr = (obj.type == GMT_SKIN) ? "Skin" : (obj.type == GMT_BONE ? "Bone" : "Normal");
-					DrawText(TextFormat("[%d] GMObject (%s)", i, typeStr), x + 6, y + 4, 11, isSel ? WHITE : Color{ 220, 220, 220, 255 });
-					DrawText(TextFormat("Verts: %d | Tris: %d | Blocks: %d", obj.vertexCount, obj.faceListCount, obj.materialBlockCount),
-					         x + 6, y + 20, 10, Color{ 160, 170, 185, 255 });
-
-					if (CheckCollisionPointRec(GetMousePosition(), itemRect) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
-					{
-						settings.selectedObjIndex = i;
-						settings.selectedBlockIndex = 0;
-					}
-
-					y += 44.0f;
-					if (y > m_leftPanelRect.y + m_leftPanelRect.height - 40)
-						break;
-				}
-			}
-			else
-			{
-				DrawText("No sub-objects in this LOD.", x + 4, y, 11, Color{ 150, 150, 150, 255 });
-			}
-		}
-		else
-		{
-			DrawText("No model loaded.", x + 4, y, 11, Color{ 150, 150, 150, 255 });
-		}
-	}
-}
-
-void UserInterface::_drawRightPanel(CObject3D* model, int currentLOD, RenderSettings& settings)
-{
-	DrawRectangleRec(m_rightPanelRect, Color{ 35, 38, 46, 255 });
-	DrawLine((int)m_rightPanelRect.x, (int)m_rightPanelRect.y,
-	         (int)m_rightPanelRect.x, (int)(m_rightPanelRect.y + m_rightPanelRect.height),
-	         Color{ 55, 60, 72, 255 });
-
-	float x = m_rightPanelRect.x + 8.0f;
-	float y = m_rightPanelRect.y + 6.0f;
-	float w = m_rightPanelRect.width - 16.0f;
-
-	// Tabs: Material Inspector / Model Tools / View
-	int tab = m_rightTab;
-	if (GuiToggleGroup(Rectangle{ x, y, w / 3.0f, 24 }, "Inspector;Tools;View", &tab))
-		m_rightTab = tab;
-	y += 30.0f;
-
-	if (m_rightTab == 0) // Material & Effects Inspector
-	{
-		DrawRectangle(x, y, w, 22, Color{ 48, 52, 64, 255 });
-		DrawText("MATERIAL & EFFECTS INSPECTOR", x + 6, y + 5, 11, Color{ 200, 210, 230, 255 });
-		y += 28.0f;
-
-		if (model)
-		{
-			LODGroup* group = model->GetGroup(currentLOD);
-			if (group && group->objectCount > 0)
-			{
-				if (settings.selectedObjIndex < 0 || settings.selectedObjIndex >= group->objectCount)
-					settings.selectedObjIndex = 0;
-
-				GMObject& selObj = group->objects[settings.selectedObjIndex];
-
-				// Object Selector
-				DrawText(TextFormat("Object (%d / %d):", settings.selectedObjIndex + 1, group->objectCount), x + 4, y + 4, 11, Color{ 200, 200, 200, 255 });
-				if (GuiButton(Rectangle{ x + 150, y, 32, 22 }, "<"))
-				{
-					if (settings.selectedObjIndex > 0)
-					{
-						settings.selectedObjIndex--;
-						settings.selectedBlockIndex = 0;
-					}
-				}
-				if (GuiButton(Rectangle{ x + 186, y, 32, 22 }, ">"))
-				{
-					if (settings.selectedObjIndex < group->objectCount - 1)
-					{
-						settings.selectedObjIndex++;
-						settings.selectedBlockIndex = 0;
-					}
-				}
-				y += 28.0f;
-
-				// Material Block Selector
-				if (selObj.materialBlockCount > 0)
-				{
-					if (settings.selectedBlockIndex < 0 || settings.selectedBlockIndex >= selObj.materialBlockCount)
-						settings.selectedBlockIndex = 0;
-
-					MaterialBlock& block = selObj.materialBlocks[settings.selectedBlockIndex];
-
-					DrawText(TextFormat("Block (%d / %d):", settings.selectedBlockIndex + 1, selObj.materialBlockCount), x + 4, y + 4, 11, Color{ 200, 200, 200, 255 });
-					if (GuiButton(Rectangle{ x + 150, y, 32, 22 }, "<"))
-					{
-						if (settings.selectedBlockIndex > 0)
-							settings.selectedBlockIndex--;
-					}
-					if (GuiButton(Rectangle{ x + 186, y, 32, 22 }, ">"))
-					{
-						if (settings.selectedBlockIndex < selObj.materialBlockCount - 1)
-							settings.selectedBlockIndex++;
-					}
-					y += 30.0f;
-
-					DrawText(TextFormat("Triangles in Block: %d", block.primitiveCount), x + 4, y, 10, Color{ 160, 180, 200, 255 });
-					y += 18.0f;
-
-					// Effects Checkboxes
-					DrawRectangle(x, y, w, 20, Color{ 42, 46, 56, 255 });
-					DrawText("Effect Flags", x + 6, y + 4, 10, Color{ 180, 190, 210, 255 });
-					y += 24.0f;
-
-					// 2-Sided Toggle
-					bool is2Side = (block.effect & XE_2SIDE) != 0;
-					if (GuiCheckBox(Rectangle{ x + 6, y, 18, 18 }, "2-Sided Rendering (XE_2SIDE)", &is2Side))
-					{
-						if (is2Side) block.effect |= XE_2SIDE;
-						else block.effect &= ~XE_2SIDE;
-					}
-					y += 22.0f;
-
-					// Opacity Toggle
-					bool isOpacity = (block.effect & XE_OPACITY) != 0;
-					if (GuiCheckBox(Rectangle{ x + 6, y, 18, 18 }, "Alpha Opacity (XE_OPACITY)", &isOpacity))
-					{
-						if (isOpacity)
-						{
-							block.effect |= XE_OPACITY;
-							if (block.amount == 0) block.amount = 255;
-						}
-						else block.effect &= ~XE_OPACITY;
-					}
-					y += 22.0f;
-
-					// Opacity Amount Slider
-					if (isOpacity)
-					{
-						float amountVal = (float)block.amount;
-						DrawText(TextFormat("Alpha Amount: %d", block.amount), x + 24, y, 10, Color{ 200, 200, 200, 255 });
-						y += 14.0f;
-						if (GuiSlider(Rectangle{ x + 24, y, w - 30, 16 }, "0", "255", &amountVal, 0, 255))
-						{
-							block.amount = (int)amountVal;
-						}
-						y += 22.0f;
-					}
-
-					// Reflect Toggle
-					bool isReflect = (block.effect & XE_REFLECT) != 0;
-					if (GuiCheckBox(Rectangle{ x + 6, y, 18, 18 }, "Reflection (XE_REFLECT)", &isReflect))
-					{
-						if (isReflect) block.effect |= XE_REFLECT;
-						else block.effect &= ~XE_REFLECT;
-					}
-					y += 22.0f;
-
-					// Self-Illuminate Toggle
-					bool isSelfIllum = (block.effect & XE_SELF_ILLUMINATE) != 0;
-					if (GuiCheckBox(Rectangle{ x + 6, y, 18, 18 }, "Self-Illuminate (XE_SELF_ILLUM)", &isSelfIllum))
-					{
-						if (isSelfIllum) block.effect |= XE_SELF_ILLUMINATE;
-						else block.effect &= ~XE_SELF_ILLUMINATE;
-					}
-					y += 22.0f;
-
-					// Highlight Toggle
-					bool isHighlight = (block.effect & XE_HIGHLIGHT_OBJ) != 0;
-					if (GuiCheckBox(Rectangle{ x + 6, y, 18, 18 }, "Highlight / Additive (XE_HIGHLIGHT)", &isHighlight))
-					{
-						if (isHighlight) block.effect |= XE_HIGHLIGHT_OBJ;
-						else block.effect &= ~XE_HIGHLIGHT_OBJ;
-					}
-					y += 28.0f;
-
-					// Texture Assignment
-					DrawRectangle(x, y, w, 20, Color{ 42, 46, 56, 255 });
-					DrawText("Texture Assignment", x + 6, y + 4, 10, Color{ 180, 190, 210, 255 });
-					y += 24.0f;
-
-					if (selObj.material && selObj.materials && block.materialID < selObj.materialCount)
-					{
-						ModelMaterial& mat = selObj.materials[block.materialID];
-						DrawText(TextFormat("Current: %s", (mat.textureName[0] ? mat.textureName : "(none)")), x + 6, y, 11, Color{ 220, 220, 120, 255 });
-						y += 20.0f;
-
-						if (!m_editingTexture)
-						{
-							if (GuiButton(Rectangle{ x + 6, y, 120, 24 }, "Edit Texture Name"))
-							{
-								m_editingTexture = true;
-								std::strncpy(m_texNameBuffer, mat.textureName, sizeof(m_texNameBuffer) - 1);
-							}
-						}
-						else
-						{
-							GuiTextBox(Rectangle{ x + 6, y, w - 80, 24 }, m_texNameBuffer, sizeof(m_texNameBuffer), true);
-							if (GuiButton(Rectangle{ x + w - 70, y, 65, 24 }, "Apply"))
-							{
-								std::strncpy(mat.textureName, m_texNameBuffer, sizeof(mat.textureName) - 1);
-								model->LoadTextures(model->GetLoadedFilename());
-								m_editingTexture = false;
-								ShowStatusMessage("Texture name updated: " + std::string(mat.textureName));
-							}
-						}
-					}
-				}
-				else
-				{
-					DrawText("No material blocks on this object.", x + 4, y, 11, Color{ 150, 150, 150, 255 });
-				}
-			}
-		}
-		else
-		{
-			DrawText("No model loaded.", x + 4, y, 11, Color{ 150, 150, 150, 255 });
-		}
-	}
-	else if (m_rightTab == 1) // Model Tools Tab
-	{
-		DrawRectangle(x, y, w, 22, Color{ 48, 52, 64, 255 });
-		DrawText("MODEL EDITING TOOLS", x + 6, y + 5, 11, Color{ 200, 210, 230, 255 });
-		y += 30.0f;
-
-		if (model)
-		{
-			// Flip Winding Button
-			if (GuiButton(Rectangle{ x + 4, y, w - 8, 28 }, "#021#Flip Winding (CW / CCW)"))
-			{
-				model->ChangeCW(currentLOD, settings.selectedObjIndex);
-				ShowStatusMessage("Triangle winding flipped (CW/CCW)");
-			}
-			y += 34.0f;
-
-			// Flip All Objects Winding
-			if (GuiButton(Rectangle{ x + 4, y, w - 8, 28 }, "Flip ALL Objects Winding"))
-			{
-				model->ChangeCW(-1, -1);
-				ShowStatusMessage("All objects triangle winding flipped");
-			}
-			y += 38.0f;
-
-			// Auto Collision Button
-			if (GuiButton(Rectangle{ x + 4, y, w - 8, 28 }, "#023#Auto Generate Collision"))
-			{
-				model->CollisionAuto(currentLOD);
-				settings.showCollision = true;
-				ShowStatusMessage("Collision mesh auto-generated successfully");
-			}
-			y += 38.0f;
-
-			// Recalculate Bounds Button
-			if (GuiButton(Rectangle{ x + 4, y, w - 8, 28 }, "#024#Recalculate Bounds"))
-			{
-				model->RecalculateBounds();
-				ShowStatusMessage("Model bounds recalculated");
-			}
-			y += 42.0f;
-
-			// Model ID Editor
-			DrawRectangle(x, y, w, 20, Color{ 42, 46, 56, 255 });
-			DrawText("Model Properties", x + 6, y + 4, 10, Color{ 180, 190, 210, 255 });
-			y += 24.0f;
-
-			int id = model->GetID();
-			DrawText(TextFormat("Model ID: %d", id), x + 6, y + 4, 11, Color{ 220, 220, 220, 255 });
-			if (GuiButton(Rectangle{ x + 150, y, 30, 20 }, "-"))
-			{
-				model->SetID(id - 1);
-			}
-			if (GuiButton(Rectangle{ x + 184, y, 30, 20 }, "+"))
-			{
-				model->SetID(id + 1);
-			}
-			y += 28.0f;
-
-			// Scroll U Editor
-			float scrlU = model->GetScrollU();
-			DrawText(TextFormat("Scroll U: %.3f", scrlU), x + 6, y + 4, 11, Color{ 220, 220, 220, 255 });
-			if (GuiButton(Rectangle{ x + 120, y, 30, 20 }, "-0.01"))
-			{
-				model->SetScrollU(scrlU - 0.01f);
-			}
-			if (GuiButton(Rectangle{ x + 154, y, 30, 20 }, "+0.01"))
-			{
-				model->SetScrollU(scrlU + 0.01f);
-			}
-			if (GuiButton(Rectangle{ x + 188, y, 26, 20 }, "0"))
-			{
-				model->SetScrollU(0.0f);
-			}
-			y += 28.0f;
-
-			// Scroll V Editor
-			float scrlV = model->GetScrollV();
-			DrawText(TextFormat("Scroll V: %.3f", scrlV), x + 6, y + 4, 11, Color{ 220, 220, 220, 255 });
-			if (GuiButton(Rectangle{ x + 120, y, 30, 20 }, "-0.01"))
-			{
-				model->SetScrollV(scrlV - 0.01f);
-			}
-			if (GuiButton(Rectangle{ x + 154, y, 30, 20 }, "+0.01"))
-			{
-				model->SetScrollV(scrlV + 0.01f);
-			}
-			if (GuiButton(Rectangle{ x + 188, y, 26, 20 }, "0"))
-			{
-				model->SetScrollV(0.0f);
-			}
-		}
-		else
-		{
-			DrawText("No model loaded.", x + 4, y, 11, Color{ 150, 150, 150, 255 });
-		}
-	}
-	else // View & Environment Tab
-	{
-		DrawRectangle(x, y, w, 22, Color{ 48, 52, 64, 255 });
-		DrawText("VIEWPORT & ENVIRONMENT", x + 6, y + 5, 11, Color{ 200, 210, 230, 255 });
-		y += 30.0f;
-
-		// Lighting toggle
-		GuiCheckBox(Rectangle{ x + 6, y, 18, 18 }, "Enable Shading / Lighting", &settings.enableLighting);
-		y += 24.0f;
-
-		// Textures toggle
-		GuiCheckBox(Rectangle{ x + 6, y, 18, 18 }, "Enable Textures", &settings.enableTextures);
-		y += 30.0f;
-
-		// Background Color Presets
-		DrawRectangle(x, y, w, 20, Color{ 42, 46, 56, 255 });
-		DrawText("Background Color Presets", x + 6, y + 4, 10, Color{ 180, 190, 210, 255 });
-		y += 26.0f;
-
-		if (GuiButton(Rectangle{ x + 6, y, w - 12, 24 }, "Dark Slate (Default)"))
-			settings.backgroundColor = Color{ 45, 48, 55, 255 };
-		y += 28.0f;
-
-		if (GuiButton(Rectangle{ x + 6, y, w - 12, 24 }, "Deep Navy"))
-			settings.backgroundColor = Color{ 20, 28, 45, 255 };
-		y += 28.0f;
-
-		if (GuiButton(Rectangle{ x + 6, y, w - 12, 24 }, "Neutral Gray"))
-			settings.backgroundColor = Color{ 140, 145, 155, 255 };
-		y += 28.0f;
-
-		if (GuiButton(Rectangle{ x + 6, y, w - 12, 24 }, "Pure Black"))
-			settings.backgroundColor = Color{ 10, 10, 12, 255 };
-		y += 28.0f;
-
-		if (GuiButton(Rectangle{ x + 6, y, w - 12, 24 }, "Flyff Sky Blue"))
-			settings.backgroundColor = Color{ 90, 140, 195, 255 };
-	}
-}
-
-void UserInterface::_drawBottomBar(CObject3D* model, int currentLOD, float& animSpeed,
-                                   bool& isPlaying, float deltaTime)
-{
-	DrawRectangleRec(m_bottomBarRect, Color{ 32, 35, 42, 255 });
-	DrawLine((int)m_bottomBarRect.x, (int)m_bottomBarRect.y,
-	         (int)(m_bottomBarRect.x + m_bottomBarRect.width), (int)m_bottomBarRect.y,
-	         Color{ 55, 60, 72, 255 });
-
-	int frameCount = model ? model->GetFrameCount() : 0;
-	if (frameCount <= 0) return;
-
-	static float animFrame = 0.0f;
-
-	if (isPlaying)
-	{
-		animFrame += deltaTime * 30.0f * animSpeed;
-		if (animFrame >= (float)frameCount)
-			animFrame = std::fmod(animFrame, (float)frameCount);
-	}
-
-	int currFrame = (int)animFrame;
-	int nextFrame = (currFrame + 1) % frameCount;
-
-	if (model)
-		model->Animate(animFrame, nextFrame, currentLOD);
-
-	float x = m_bottomBarRect.x + 10.0f;
-	float y = m_bottomBarRect.y + 10.0f;
-
-	// Play/Pause button
-	if (GuiButton(Rectangle{ x, y, 32, 28 }, isPlaying ? "#132#" : "#131#"))
-	{
-		isPlaying = !isPlaying;
-	}
-	x += 38.0f;
-
-	// Stop button
-	if (GuiButton(Rectangle{ x, y, 32, 28 }, "#133#"))
-	{
-		isPlaying = false;
-		animFrame = 0.0f;
-	}
-	x += 38.0f;
-
-	// Step Back button
-	if (GuiButton(Rectangle{ x, y, 28, 28 }, "<"))
-	{
-		animFrame = (currFrame > 0) ? (float)(currFrame - 1) : (float)(frameCount - 1);
-		isPlaying = false;
-	}
-	x += 32.0f;
-
-	// Step Forward button
-	if (GuiButton(Rectangle{ x, y, 28, 28 }, ">"))
-	{
-		animFrame = (currFrame + 1 >= frameCount) ? 0.0f : (float)(currFrame + 1);
-		isPlaying = false;
-	}
-	x += 36.0f;
-
-	// Frame Info text
-	DrawText(TextFormat("Frame: %d / %d", currFrame, frameCount - 1), (int)x, (int)y + 7, 12, Color{ 220, 220, 220, 255 });
-	x += 105.0f;
-
-	// Frame Scrubber Slider
-	float sliderW = m_bottomBarRect.width - (x - m_bottomBarRect.x) - 150.0f;
-	if (sliderW > 60.0f)
-	{
-		float frameVal = animFrame;
-		if (GuiSlider(Rectangle{ x, y + 4, sliderW, 20 }, "0", TextFormat("%d", frameCount - 1), &frameVal, 0, (float)(frameCount - 1)))
-		{
-			animFrame = frameVal;
-			isPlaying = false;
-		}
-		x += sliderW + 15.0f;
-	}
-
-	// Speed label & slider
-	DrawText("Speed:", (int)x, (int)y + 7, 11, Color{ 180, 180, 180, 255 });
-	x += 42.0f;
-	GuiSlider(Rectangle{ x, y + 4, 75, 20 }, "", TextFormat("%.1fx", animSpeed), &animSpeed, 0.2f, 2.5f);
-}
-
-void UserInterface::_drawStatusBar()
-{
-	DrawRectangleRec(m_statusBarRect, Color{ 25, 27, 33, 255 });
-	DrawLine(0, (int)m_statusBarRect.y, GetScreenWidth(), (int)m_statusBarRect.y, Color{ 48, 52, 62, 255 });
-
-	Color msgColor = m_statusIsError ? Color{ 255, 90, 90, 255 } : Color{ 140, 220, 160, 255 };
-	DrawText(m_statusMessage.c_str(), 10, (int)m_statusBarRect.y + 6, 12, msgColor);
-
-	const char* hints = "Right-Drag: Orbit | Middle-Drag: Pan | Wheel: Zoom | R: Frame | Solid/Wire: View modes";
-	int textW = MeasureText(hints, 11);
-	DrawText(hints, GetScreenWidth() - textW - 12, (int)m_statusBarRect.y + 7, 11, Color{ 140, 145, 160, 255 });
+	m_fileDialog.active = true;
+	m_fileDialog.target = target;
+	m_fileDialog.selectedIndex = -1;
+	m_fileDialog.scrollIndex = 0;
+	m_fileDialog.selectedFile = "";
+
+	if (m_fileDialog.currentPath.empty())
+		m_fileDialog.currentPath = "./";
+
+	_refreshDirectoryContents();
 }
 
 void UserInterface::_refreshDirectoryContents()
@@ -797,191 +68,1245 @@ void UserInterface::_refreshDirectoryContents()
 	m_fileDialog.directories.clear();
 	m_fileDialog.files.clear();
 
-	DIR* dir = opendir(m_fileDialog.currentPath.c_str());
-	if (!dir)
+	try
 	{
-		m_fileDialog.currentPath = "./";
-		dir = opendir(m_fileDialog.currentPath.c_str());
-	}
+		std::string path = m_fileDialog.currentPath;
+		if (!fs::exists(path) || !fs::is_directory(path))
+			path = "./";
 
-	if (dir)
-	{
-		struct dirent* entry;
-		while ((entry = readdir(dir)) != nullptr)
+		m_fileDialog.directories.push_back("..");
+
+		for (const auto& entry : fs::directory_iterator(path, fs::directory_options::skip_permission_denied))
 		{
-			std::string name = entry->d_name;
-			if (name == ".") continue;
-
-			std::string full = m_fileDialog.currentPath;
-			if (full.back() != '/') full += "/";
-			full += name;
-
-			struct stat st;
-			if (stat(full.c_str(), &st) == 0)
+			if (entry.is_directory())
 			{
-				if (S_ISDIR(st.st_mode))
-					m_fileDialog.directories.push_back(name);
-				else if (IsO3DFile(name) || !m_fileDialog.isSaveMode)
-					m_fileDialog.files.push_back(name);
+				m_fileDialog.directories.push_back(entry.path().filename().string());
+			}
+			else if (entry.is_regular_file())
+			{
+				std::string ext = entry.path().extension().string();
+				std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+
+				bool accept = false;
+				if (m_fileDialog.target == DIALOG_OPEN_MODEL || m_fileDialog.target == DIALOG_APPEND_MODEL || m_fileDialog.target == DIALOG_SAVE_MODEL)
+					accept = (ext == ".o3d");
+				else if (m_fileDialog.target == DIALOG_OPEN_MOTION)
+					accept = (ext == ".mot");
+				else if (m_fileDialog.target == DIALOG_OPEN_SKELETON)
+					accept = (ext == ".bon");
+				else if (m_fileDialog.target == DIALOG_SELECT_FOLDER)
+					accept = false;
+
+				if (accept)
+					m_fileDialog.files.push_back(entry.path().filename().string());
 			}
 		}
-		closedir(dir);
 
-		std::sort(m_fileDialog.directories.begin(), m_fileDialog.directories.end());
+		std::sort(m_fileDialog.directories.begin() + 1, m_fileDialog.directories.end());
 		std::sort(m_fileDialog.files.begin(), m_fileDialog.files.end());
+	}
+	catch (const std::exception&)
+	{
 	}
 }
 
-void UserInterface::OpenFileDialog(bool isSave)
+void UserInterface::_updateLayout(int screenWidth, int screenHeight, bool hasAnimation)
 {
-	m_fileDialog.active = true;
-	m_fileDialog.isSaveMode = isSave;
-	m_fileDialog.selectedIndex = -1;
-	m_fileDialog.selectedFile = "";
-	std::strncpy(m_fileDialog.manualPathBuffer, m_fileDialog.currentPath.c_str(), sizeof(m_fileDialog.manualPathBuffer) - 1);
-	_refreshDirectoryContents();
+	float topBarHeight = 44.0f;
+	float statusBarHeight = 24.0f;
+	float bottomAnimHeight = hasAnimation ? 48.0f : 0.0f;
+	float leftPanelWidth = 320.0f;
+	float rightPanelWidth = 330.0f;
+
+	m_topBarRect = Rectangle{ 0, 0, (float)screenWidth, topBarHeight };
+	m_statusBarRect = Rectangle{ 0, (float)screenHeight - statusBarHeight, (float)screenWidth, statusBarHeight };
+
+	float mainAreaY = topBarHeight;
+	float mainAreaHeight = (float)screenHeight - topBarHeight - statusBarHeight - bottomAnimHeight;
+
+	m_leftPanelRect = Rectangle{ 0, mainAreaY, leftPanelWidth, mainAreaHeight + bottomAnimHeight };
+	m_rightPanelRect = Rectangle{ (float)screenWidth - rightPanelWidth, mainAreaY, rightPanelWidth, mainAreaHeight + bottomAnimHeight };
+
+	float vpX = leftPanelWidth;
+	float vpWidth = (float)screenWidth - leftPanelWidth - rightPanelWidth;
+
+	m_viewportRect = Rectangle{ vpX, mainAreaY, vpWidth, mainAreaHeight };
+	m_bottomBarRect = Rectangle{ vpX, mainAreaY + mainAreaHeight, vpWidth, bottomAnimHeight };
 }
 
-void UserInterface::_drawFileDialog()
+void UserInterface::UpdateAndDraw(SceneManager& scene, OrbitCamera& camera,
+                                  RenderSettings& settings, float deltaTime)
 {
+	int screenWidth = GetScreenWidth();
+	int screenHeight = GetScreenHeight();
+
+	if (m_statusTimer > 0.0f)
+		m_statusTimer -= deltaTime;
+
+	bool hasAnimation = (scene.GetTotalFrameCount() > 0);
+	_updateLayout(screenWidth, screenHeight, hasAnimation);
+
+	// 1. Draw Top Toolbar
+	_drawTopBar(scene, camera, settings);
+
+	// 2. Draw Left Panel (Library Scanner / Scene Parts / Model Stats)
+	_drawLeftPanel(scene, camera, settings);
+
+	// 3. Draw Right Panel (Material Inspector / Submesh / Animation & Skeleton)
+	_drawRightPanel(scene, settings);
+
+	// 4. Draw Bottom Animation Timeline (if animation exists)
+	if (hasAnimation)
+		_drawBottomBar(scene, deltaTime);
+
+	// 5. Draw Bottom Status Bar
+	_drawStatusBar(scene, camera);
+
+	// 6. Draw Modal File Dialog (if open)
+	if (m_fileDialog.active)
+		_drawFileDialog(scene, camera);
+}
+
+void UserInterface::_drawTopBar(SceneManager& scene, OrbitCamera& camera, RenderSettings& settings)
+{
+	DrawRectangleRec(m_topBarRect, Color{ 28, 30, 36, 255 });
+	DrawLine(0, (int)m_topBarRect.height, GetScreenWidth(), (int)m_topBarRect.height, Color{ 48, 52, 62, 255 });
+
+	float x = 10.0f;
+	float y = 8.0f;
+	float btnHeight = 28.0f;
+
+	// File operations
+	if (GuiButton(Rectangle{ x, y, 90, btnHeight }, "#01# Open Model"))
+	{
+		OpenFileDialog(DIALOG_OPEN_MODEL);
+	}
+	x += 96.0f;
+
+	if (GuiButton(Rectangle{ x, y, 85, btnHeight }, "#201# + Append"))
+	{
+		OpenFileDialog(DIALOG_APPEND_MODEL);
+	}
+	x += 91.0f;
+
+	CObject3D* activeModel = scene.GetActiveModel();
+	if (GuiButton(Rectangle{ x, y, 65, btnHeight }, "#02# Save"))
+	{
+		if (activeModel)
+		{
+			std::string fn = activeModel->GetLoadedFilename();
+			if (!fn.empty())
+			{
+				if (activeModel->Save(fn))
+					ShowStatusMessage("Saved model: " + SceneManager::ExtractFileName(fn));
+				else
+					ShowStatusMessage("Error saving model: " + SceneManager::ExtractFileName(fn), 4.0f, true);
+			}
+			else
+				OpenFileDialog(DIALOG_SAVE_MODEL);
+		}
+		else
+		{
+			ShowStatusMessage("No active model to save.", 3.0f, true);
+		}
+	}
+	x += 71.0f;
+
+	if (GuiButton(Rectangle{ x, y, 80, btnHeight }, "#03# Save As"))
+	{
+		if (activeModel)
+			OpenFileDialog(DIALOG_SAVE_MODEL);
+		else
+			ShowStatusMessage("No active model to save.", 3.0f, true);
+	}
+	x += 86.0f;
+
+	if (GuiButton(Rectangle{ x, y, 95, btnHeight }, "#132# Load Motion"))
+	{
+		OpenFileDialog(DIALOG_OPEN_MOTION);
+	}
+	x += 101.0f;
+
+	// Separator
+	DrawLine((int)x + 4, 8, (int)x + 4, 36, Color{ 60, 65, 78, 255 });
+	x += 12.0f;
+
+	// Camera & Framing
+	if (GuiButton(Rectangle{ x, y, 80, btnHeight }, "#210# Frame (F)"))
+	{
+		if (scene.GetPartCount() > 0)
+			camera.FrameModel(scene.GetCombinedBounds());
+		else
+			camera.Reset();
+	}
+	x += 86.0f;
+
+	if (GuiButton(Rectangle{ x, y, 70, btnHeight }, "#198# Reset"))
+	{
+		camera.Reset();
+	}
+	x += 76.0f;
+
+	// Separator
+	DrawLine((int)x + 4, 8, (int)x + 4, 36, Color{ 60, 65, 78, 255 });
+	x += 12.0f;
+
+	// Viewport Overlays
+	bool wire = (settings.fillMode == FILL_WIREFRAME);
+	if (GuiToggle(Rectangle{ x, y, 40, btnHeight }, "Wire", &wire))
+	{
+		settings.fillMode = wire ? FILL_WIREFRAME : FILL_SOLID;
+	}
+	x += 44.0f;
+
+	GuiToggle(Rectangle{ x, y, 45, btnHeight }, "Grid", &settings.showGrid);
+	x += 49.0f;
+
+	GuiToggle(Rectangle{ x, y, 45, btnHeight }, "Axes", &settings.showAxes);
+	x += 49.0f;
+
+	GuiToggle(Rectangle{ x, y, 50, btnHeight }, "Bounds", &settings.showBounds);
+	x += 54.0f;
+
+	GuiToggle(Rectangle{ x, y, 50, btnHeight }, "Bones", &settings.showBones);
+	x += 54.0f;
+
+	GuiToggle(Rectangle{ x, y, 45, btnHeight }, "Coll", &settings.showCollision);
+	x += 49.0f;
+
+	GuiToggle(Rectangle{ x, y, 45, btnHeight }, "Light", &settings.enableLighting);
+	x += 49.0f;
+
+	GuiToggle(Rectangle{ x, y, 45, btnHeight }, "Tex", &settings.enableTextures);
+	x += 49.0f;
+
+	// Background color toggle button
+	if (GuiButton(Rectangle{ x, y, 32, btnHeight }, "#143#"))
+	{
+		if (settings.backgroundColor.r == 45)
+			settings.backgroundColor = Color{ 15, 17, 22, 255 }; // Dark
+		else if (settings.backgroundColor.r == 15)
+			settings.backgroundColor = Color{ 90, 95, 110, 255 }; // Light grey
+		else if (settings.backgroundColor.r == 90)
+			settings.backgroundColor = Color{ 40, 60, 90, 255 }; // Blueish
+		else
+			settings.backgroundColor = Color{ 45, 48, 55, 255 }; // Default
+	}
+}
+
+void UserInterface::_drawLeftPanel(SceneManager& scene, OrbitCamera& camera, RenderSettings& settings)
+{
+	DrawRectangleRec(m_leftPanelRect, Color{ 32, 35, 42, 255 });
+	DrawLine((int)(m_leftPanelRect.x + m_leftPanelRect.width), (int)m_leftPanelRect.y,
+	         (int)(m_leftPanelRect.x + m_leftPanelRect.width), (int)(m_leftPanelRect.y + m_leftPanelRect.height),
+	         Color{ 48, 52, 62, 255 });
+
+	// Tab header
+	std::string tabPartsTitle = "Parts (" + std::to_string(scene.GetPartCount()) + ")";
+	const char* tabNames[] = { "Library", tabPartsTitle.c_str(), "Hierarchy" };
+
+	float tabWidth = m_leftPanelRect.width / 3.0f;
+	for (int i = 0; i < 3; i++)
+	{
+		bool active = (m_leftTab == i);
+		Rectangle tabRec{ m_leftPanelRect.x + i * tabWidth, m_leftPanelRect.y, tabWidth, 30 };
+		if (GuiToggle(tabRec, tabNames[i], &active))
+		{
+			m_leftTab = i;
+		}
+	}
+
+	if (m_leftTab == 0)
+		_drawLibraryTab(scene, camera);
+	else if (m_leftTab == 1)
+		_drawScenePartsTab(scene, camera);
+	else
+		_drawModelStatsTab(scene, settings);
+}
+
+void UserInterface::_drawLibraryTab(SceneManager& scene, OrbitCamera& camera)
+{
+	float x = m_leftPanelRect.x + 8.0f;
+	float y = m_leftPanelRect.y + 36.0f;
+	float w = m_leftPanelRect.width - 16.0f;
+
+	// Folder selector & refresh bar
+	GuiLabel(Rectangle{ x, y, 50, 22 }, "Folder:");
+	std::string folderDisplay = m_scanner.GetCurrentFolder();
+	if (folderDisplay.length() > 22)
+		folderDisplay = "..." + folderDisplay.substr(folderDisplay.length() - 22);
+
+	GuiTextBox(Rectangle{ x + 48, y, w - 128, 22 }, (char*)folderDisplay.c_str(), 64, false);
+
+	if (GuiButton(Rectangle{ x + w - 76, y, 40, 22 }, "Dir"))
+	{
+		OpenFileDialog(DIALOG_SELECT_FOLDER);
+	}
+
+	if (GuiButton(Rectangle{ x + w - 32, y, 32, 22 }, "#140#"))
+	{
+		m_scanner.Scan("", m_scanner.IsRecursive());
+		ShowStatusMessage("Scanned directory: " + m_scanner.GetCurrentFolder());
+	}
+	y += 28.0f;
+
+	// Search Filter input
+	GuiLabel(Rectangle{ x, y, 45, 22 }, "Filter:");
+	if (GuiTextBox(Rectangle{ x + 45, y, w - 45, 22 }, m_searchBuffer, sizeof(m_searchBuffer), true))
+	{
+		m_scanner.SetSearchFilter(m_searchBuffer);
+	}
+	y += 28.0f;
+
+	// Mode toggle: Replace vs Append
+	bool rec = m_scanner.IsRecursive();
+	if (GuiCheckBox(Rectangle{ x, y + 2, 18, 18 }, "Subfolders", &rec))
+	{
+		m_scanner.SetRecursive(rec);
+		m_scanner.Scan("", rec);
+	}
+
+	bool appMode = m_appendMode;
+	if (GuiToggle(Rectangle{ x + 140, y, w - 140, 22 }, appMode ? "Mode: Append (+)" : "Mode: Replace", &appMode))
+	{
+		m_appendMode = appMode;
+	}
+	y += 28.0f;
+
+	// Sub-tabs: Models / Motions / Skeletons
+	std::string mTitle = "Models (" + std::to_string(m_scanner.GetModels().size()) + ")";
+	std::string motTitle = "Motions (" + std::to_string(m_scanner.GetMotions().size()) + ")";
+	std::string sklTitle = "Skel (" + std::to_string(m_scanner.GetSkeletons().size()) + ")";
+
+	float subTabW = w / 3.0f;
+	bool tab0 = (m_libraryTab == 0);
+	bool tab1 = (m_libraryTab == 1);
+	bool tab2 = (m_libraryTab == 2);
+
+	if (GuiToggle(Rectangle{ x, y, subTabW, 24 }, mTitle.c_str(), &tab0)) m_libraryTab = 0;
+	if (GuiToggle(Rectangle{ x + subTabW, y, subTabW, 24 }, motTitle.c_str(), &tab1)) m_libraryTab = 1;
+	if (GuiToggle(Rectangle{ x + subTabW * 2, y, subTabW, 24 }, sklTitle.c_str(), &tab2)) m_libraryTab = 2;
+	y += 28.0f;
+
+	// File List scroll view
+	float listHeight = m_leftPanelRect.height - (y - m_leftPanelRect.y) - 10.0f;
+	DrawRectangle(x, y, w, listHeight, Color{ 22, 24, 28, 255 });
+	DrawRectangleLines(x, y, w, listHeight, Color{ 48, 52, 62, 255 });
+
+	float itemHeight = 24.0f;
+	int visibleItems = (int)(listHeight / itemHeight);
+
+	if (m_libraryTab == 0) // Models
+	{
+		const auto& models = m_scanner.GetModels();
+		if (models.empty())
+		{
+			GuiLabel(Rectangle{ x + 10, y + 10, w - 20, 20 }, "No .o3d models found in folder.");
+		}
+		else
+		{
+			int maxScroll = std::max(0, (int)models.size() - visibleItems);
+			if (m_libraryScroll > maxScroll) m_libraryScroll = maxScroll;
+
+			// Handle mouse wheel scrolling when over list
+			Vector2 mousePos = GetMousePosition();
+			if (CheckCollisionPointRec(mousePos, Rectangle{ x, y, w, listHeight }))
+			{
+				float wheel = GetMouseWheelMove();
+				if (wheel != 0)
+				{
+					m_libraryScroll -= (int)wheel * 2;
+					if (m_libraryScroll < 0) m_libraryScroll = 0;
+					if (m_libraryScroll > maxScroll) m_libraryScroll = maxScroll;
+				}
+			}
+
+			for (int i = 0; i < visibleItems && (i + m_libraryScroll) < (int)models.size(); i++)
+			{
+				int idx = i + m_libraryScroll;
+				const auto& item = models[idx];
+				float itemY = y + i * itemHeight;
+
+				Rectangle rowRec{ x + 2, itemY + 1, w - 60, itemHeight - 2 };
+				std::string label = item.filename;
+				if (label.length() > 24) label = label.substr(0, 22) + "..";
+
+				if (GuiButton(rowRec, label.c_str()))
+				{
+					if (m_appendMode)
+					{
+						if (scene.AppendModel(item.filepath))
+						{
+							ShowStatusMessage("Appended model: " + item.filename);
+							camera.FrameModel(scene.GetCombinedBounds());
+						}
+						else
+							ShowStatusMessage("Failed to append: " + item.filename, 4.0f, true);
+					}
+					else
+					{
+						if (scene.LoadBaseModel(item.filepath))
+						{
+							ShowStatusMessage("Loaded base model: " + item.filename);
+							camera.FrameModel(scene.GetCombinedBounds());
+						}
+						else
+							ShowStatusMessage("Failed to load: " + item.filename, 4.0f, true);
+					}
+				}
+
+				// Quick "+" append button
+				if (GuiButton(Rectangle{ x + w - 54, itemY + 1, 24, itemHeight - 2 }, "+"))
+				{
+					if (scene.AppendModel(item.filepath))
+					{
+						ShowStatusMessage("Appended: " + item.filename);
+						camera.FrameModel(scene.GetCombinedBounds());
+					}
+					else
+						ShowStatusMessage("Failed to append: " + item.filename, 4.0f, true);
+				}
+
+				// Quick "Load" replace button
+				if (GuiButton(Rectangle{ x + w - 28, itemY + 1, 26, itemHeight - 2 }, "#198#"))
+				{
+					if (scene.LoadBaseModel(item.filepath))
+					{
+						ShowStatusMessage("Loaded: " + item.filename);
+						camera.FrameModel(scene.GetCombinedBounds());
+					}
+					else
+						ShowStatusMessage("Failed to load: " + item.filename, 4.0f, true);
+				}
+			}
+		}
+	}
+	else if (m_libraryTab == 1) // Motions
+	{
+		const auto& motions = m_scanner.GetMotions();
+		if (motions.empty())
+		{
+			GuiLabel(Rectangle{ x + 10, y + 10, w - 20, 20 }, "No .mot motions found.");
+		}
+		else
+		{
+			int maxScroll = std::max(0, (int)motions.size() - visibleItems);
+			if (m_libraryScroll > maxScroll) m_libraryScroll = maxScroll;
+
+			Vector2 mousePos = GetMousePosition();
+			if (CheckCollisionPointRec(mousePos, Rectangle{ x, y, w, listHeight }))
+			{
+				float wheel = GetMouseWheelMove();
+				if (wheel != 0)
+				{
+					m_libraryScroll -= (int)wheel * 2;
+					if (m_libraryScroll < 0) m_libraryScroll = 0;
+					if (m_libraryScroll > maxScroll) m_libraryScroll = maxScroll;
+				}
+			}
+
+			for (int i = 0; i < visibleItems && (i + m_libraryScroll) < (int)motions.size(); i++)
+			{
+				int idx = i + m_libraryScroll;
+				const auto& item = motions[idx];
+				float itemY = y + i * itemHeight;
+
+				std::string label = item.filename;
+				if (label.length() > 22) label = label.substr(0, 20) + "..";
+
+				if (GuiButton(Rectangle{ x + 2, itemY + 1, w - 4, itemHeight - 2 }, ("#131# " + label).c_str()))
+				{
+					if (scene.LoadMotion(item.filepath))
+					{
+						ShowStatusMessage("Loaded motion: " + item.filename);
+					}
+					else
+					{
+						ShowStatusMessage("Failed to load motion: " + item.filename, 4.0f, true);
+					}
+				}
+			}
+		}
+	}
+	else if (m_libraryTab == 2) // Skeletons
+	{
+		const auto& skeletons = m_scanner.GetSkeletons();
+		if (skeletons.empty())
+		{
+			GuiLabel(Rectangle{ x + 10, y + 10, w - 20, 20 }, "No .bon skeletons found.");
+		}
+		else
+		{
+			for (int i = 0; i < visibleItems && i < (int)skeletons.size(); i++)
+			{
+				const auto& item = skeletons[i];
+				float itemY = y + i * itemHeight;
+
+				if (GuiButton(Rectangle{ x + 2, itemY + 1, w - 4, itemHeight - 2 }, item.filename.c_str()))
+				{
+					if (scene.LoadSkeleton(item.filepath))
+						ShowStatusMessage("Loaded skeleton: " + item.filename);
+					else
+						ShowStatusMessage("Failed to load skeleton: " + item.filename, 4.0f, true);
+				}
+			}
+		}
+	}
+}
+
+void UserInterface::_drawScenePartsTab(SceneManager& scene, OrbitCamera& camera)
+{
+	float x = m_leftPanelRect.x + 8.0f;
+	float y = m_leftPanelRect.y + 36.0f;
+	float w = m_leftPanelRect.width - 16.0f;
+
+	int partCount = scene.GetPartCount();
+	GuiLabel(Rectangle{ x, y, w, 20 }, ("Loaded Parts in Scene (" + std::to_string(partCount) + "):").c_str());
+	y += 24.0f;
+
+	float listHeight = 180.0f;
+	DrawRectangle(x, y, w, listHeight, Color{ 22, 24, 28, 255 });
+	DrawRectangleLines(x, y, w, listHeight, Color{ 48, 52, 62, 255 });
+
+	if (partCount == 0)
+	{
+		GuiLabel(Rectangle{ x + 10, y + 10, w - 20, 20 }, "No models loaded in scene.");
+	}
+	else
+	{
+		float itemH = 26.0f;
+		for (int i = 0; i < partCount; i++)
+		{
+			ScenePart* part = scene.GetPart(i);
+			if (!part) continue;
+
+			float rowY = y + i * itemH;
+			if (rowY + itemH > y + listHeight) break;
+
+			// Highlight active selected part
+			bool isActive = (i == scene.GetActivePartIndex());
+			if (isActive)
+				DrawRectangle((int)x + 2, (int)rowY + 1, (int)w - 4, (int)itemH - 2, Color{ 40, 70, 110, 255 });
+
+			// Visibility checkbox
+			bool vis = part->visible;
+			if (GuiCheckBox(Rectangle{ x + 4, rowY + 4, 18, 18 }, "", &vis))
+			{
+				part->visible = vis;
+			}
+
+			// Part title
+			std::string title = part->isBase ? "[Base] " : "[" + std::to_string(i) + "] ";
+			title += part->filename;
+			if (title.length() > 22) title = title.substr(0, 20) + "..";
+
+			if (GuiButton(Rectangle{ x + 26, rowY + 2, w - 60, itemH - 4 }, title.c_str()))
+			{
+				scene.SetActivePartIndex(i);
+			}
+
+			// Remove part button (for non-base or all)
+			if (GuiButton(Rectangle{ x + w - 30, rowY + 2, 24, itemH - 4 }, "#143#"))
+			{
+				scene.RemovePart(i);
+				break;
+			}
+		}
+	}
+	y += listHeight + 8.0f;
+
+	// Selected Part Configuration
+	ScenePart* activePart = scene.GetPart(scene.GetActivePartIndex());
+	if (activePart)
+	{
+		DrawRectangle(x, y, w, 150.0f, Color{ 26, 28, 34, 255 });
+		DrawRectangleLines(x, y, w, 150.0f, Color{ 48, 52, 62, 255 });
+
+		float py = y + 6.0f;
+		GuiLabel(Rectangle{ x + 6, py, w - 12, 18 }, ("Selected: " + activePart->filename).c_str());
+		py += 22.0f;
+
+		// LOD Level for this part
+		GuiLabel(Rectangle{ x + 6, py, 60, 20 }, "Part LOD:");
+		bool lod0 = (activePart->currentLOD == 0);
+		bool lod1 = (activePart->currentLOD == 1);
+		bool lod2 = (activePart->currentLOD == 2);
+		if (GuiToggle(Rectangle{ x + 70, py, 40, 20 }, "0", &lod0)) activePart->currentLOD = 0;
+		if (GuiToggle(Rectangle{ x + 115, py, 40, 20 }, "1", &lod1)) activePart->currentLOD = 1;
+		if (GuiToggle(Rectangle{ x + 160, py, 40, 20 }, "2", &lod2)) activePart->currentLOD = 2;
+		py += 26.0f;
+
+		// Bone Attachment Socket (for accessories, weapons, hats)
+		GuiLabel(Rectangle{ x + 6, py, 80, 20 }, "Attachment:");
+		CObject3D* baseModel = scene.GetBaseModel();
+		int boneCount = baseModel ? baseModel->GetBoneCount() : 0;
+
+		std::string socketName = "Root / Skinned";
+		if (activePart->attachBoneID >= 0)
+			socketName = "Bone #" + std::to_string(activePart->attachBoneID);
+
+		if (GuiButton(Rectangle{ x + 90, py, w - 100, 22 }, socketName.c_str()))
+		{
+			// Cycle attachment bone socket
+			if (boneCount > 0)
+			{
+				activePart->attachBoneID++;
+				if (activePart->attachBoneID >= boneCount)
+					activePart->attachBoneID = -1; // wrap back to root
+			}
+		}
+		py += 28.0f;
+
+		// Quick socket reset button
+		if (activePart->attachBoneID >= 0)
+		{
+			if (GuiButton(Rectangle{ x + 90, py, w - 100, 20 }, "Reset to Root"))
+				activePart->attachBoneID = -1;
+		}
+
+		y += 158.0f;
+	}
+
+	// Action buttons
+	if (GuiButton(Rectangle{ x, y, (w - 6) / 2, 26 }, "#201# Append Part"))
+	{
+		OpenFileDialog(DIALOG_APPEND_MODEL);
+	}
+
+	if (GuiButton(Rectangle{ x + (w - 6) / 2 + 6, y, (w - 6) / 2, 26 }, "#143# Clear Parts"))
+	{
+		scene.ClearAppendedParts();
+	}
+	y += 30.0f;
+
+	if (GuiButton(Rectangle{ x, y, w, 26 }, "#210# Frame All Parts (F)"))
+	{
+		camera.FrameModel(scene.GetCombinedBounds());
+	}
+}
+
+void UserInterface::_drawModelStatsTab(SceneManager& scene, RenderSettings& settings)
+{
+	float x = m_leftPanelRect.x + 8.0f;
+	float y = m_leftPanelRect.y + 36.0f;
+	float w = m_leftPanelRect.width - 16.0f;
+
+	CObject3D* model = scene.GetActiveModel();
+	if (!model)
+	{
+		GuiLabel(Rectangle{ x, y, w, 20 }, "No active model loaded.");
+		return;
+	}
+
+	// General Stats Box
+	DrawRectangle(x, y, w, 110.0f, Color{ 22, 24, 28, 255 });
+	DrawRectangleLines(x, y, w, 110.0f, Color{ 48, 52, 62, 255 });
+
+	float sy = y + 4.0f;
+	GuiLabel(Rectangle{ x + 6, sy, w - 12, 18 }, ("File: " + SceneManager::ExtractFileName(model->GetLoadedFilename())).c_str());
+	sy += 18.0f;
+
+	int totalVerts = 0, totalTris = 0, totalSubObjs = 0;
+	const LODGroup* grp = model->GetGroup(0);
+	if (grp)
+	{
+		totalSubObjs = grp->objectCount;
+		for (int i = 0; i < grp->objectCount; i++)
+		{
+			totalVerts += grp->objects[i].vertexCount;
+			totalTris += grp->objects[i].faceListCount;
+		}
+	}
+
+	GuiLabel(Rectangle{ x + 6, sy, w - 12, 18 }, ("Sub-Objects: " + std::to_string(totalSubObjs) + " | Bones: " + std::to_string(model->GetBoneCount())).c_str());
+	sy += 18.0f;
+	GuiLabel(Rectangle{ x + 6, sy, w - 12, 18 }, ("Vertices: " + std::to_string(totalVerts) + " | Triangles: " + std::to_string(totalTris)).c_str());
+	sy += 18.0f;
+
+	const Bounds& b = model->GetBounds();
+	std::ostringstream bss;
+	bss << std::fixed << std::setprecision(1) << "Bounds: [" << b.Min.x << "," << b.Min.y << "," << b.Min.z << "]";
+	GuiLabel(Rectangle{ x + 6, sy, w - 12, 18 }, bss.str().c_str());
+
+	y += 118.0f;
+
+	// Sub-Object Hierarchy Tree
+	GuiLabel(Rectangle{ x, y, w, 20 }, "Sub-Object Hierarchy:");
+	y += 22.0f;
+
+	float treeHeight = m_leftPanelRect.height - (y - m_leftPanelRect.y) - 10.0f;
+	DrawRectangle(x, y, w, treeHeight, Color{ 22, 24, 28, 255 });
+	DrawRectangleLines(x, y, w, treeHeight, Color{ 48, 52, 62, 255 });
+
+	if (grp && grp->objects)
+	{
+		float rowH = 22.0f;
+		for (int i = 0; i < grp->objectCount; i++)
+		{
+			float rowY = y + i * rowH;
+			if (rowY + rowH > y + treeHeight) break;
+
+			const GMObject& obj = grp->objects[i];
+			bool isSel = (settings.selectedObjIndex == i);
+
+			if (isSel)
+				DrawRectangle((int)x + 2, (int)rowY + 1, (int)w - 4, (int)rowH - 2, Color{ 40, 80, 130, 255 });
+
+			std::string objTitle = "#" + std::to_string(i) + " (" + (obj.type == GMT_SKIN ? "Skin" : "Mesh") + ")";
+			objTitle += " V:" + std::to_string(obj.vertexCount) + " F:" + std::to_string(obj.faceListCount);
+
+			if (GuiButton(Rectangle{ x + 4, rowY + 1, w - 8, rowH - 2 }, objTitle.c_str()))
+			{
+				settings.selectedObjIndex = (settings.selectedObjIndex == i) ? -1 : i;
+				settings.selectedBlockIndex = -1;
+			}
+		}
+	}
+}
+
+void UserInterface::_drawRightPanel(SceneManager& scene, RenderSettings& settings)
+{
+	DrawRectangleRec(m_rightPanelRect, Color{ 32, 35, 42, 255 });
+	DrawLine((int)m_rightPanelRect.x, (int)m_rightPanelRect.y,
+	         (int)m_rightPanelRect.x, (int)(m_rightPanelRect.y + m_rightPanelRect.height),
+	         Color{ 48, 52, 62, 255 });
+
+	// Right Tab header
+	const char* rTabNames[] = { "Materials", "Submesh", "Motion" };
+	float tabWidth = m_rightPanelRect.width / 3.0f;
+	for (int i = 0; i < 3; i++)
+	{
+		bool active = (m_rightTab == i);
+		Rectangle tabRec{ m_rightPanelRect.x + i * tabWidth, m_rightPanelRect.y, tabWidth, 30 };
+		if (GuiToggle(tabRec, rTabNames[i], &active))
+		{
+			m_rightTab = i;
+		}
+	}
+
+	CObject3D* model = scene.GetActiveModel();
+	ScenePart* activePart = scene.GetPart(scene.GetActivePartIndex());
+	int currentLOD = activePart ? activePart->currentLOD : 0;
+
+	if (m_rightTab == 0)
+		_drawMaterialTab(model, currentLOD, settings);
+	else if (m_rightTab == 1)
+		_drawSubmeshTab(model, currentLOD, settings);
+	else
+		_drawAnimationTab(scene);
+}
+
+void UserInterface::_drawMaterialTab(CObject3D* model, int currentLOD, RenderSettings& settings)
+{
+	float x = m_rightPanelRect.x + 8.0f;
+	float y = m_rightPanelRect.y + 36.0f;
+	float w = m_rightPanelRect.width - 16.0f;
+
+	if (!model)
+	{
+		GuiLabel(Rectangle{ x, y, w, 20 }, "No active model selected.");
+		return;
+	}
+
+	LODGroup* grp = model->GetGroup(currentLOD);
+	if (!grp || settings.selectedObjIndex < 0 || settings.selectedObjIndex >= grp->objectCount)
+	{
+		GuiLabel(Rectangle{ x, y, w, 20 }, "Select a sub-object from hierarchy");
+		GuiLabel(Rectangle{ x, y + 20, w, 20 }, "to inspect and edit its materials.");
+
+		// Global Texture Scroll Controls
+		y += 60.0f;
+		GuiGroupBox(Rectangle{ x, y, w, 90 }, "Texture UV Scrolling");
+		float u = model->GetScrollU();
+		float v = model->GetScrollV();
+
+		GuiLabel(Rectangle{ x + 10, y + 20, 60, 20 }, "Scroll U:");
+		if (GuiSlider(Rectangle{ x + 70, y + 20, w - 120, 20 }, "-1.0", "1.0", &u, -1.0f, 1.0f))
+			model->SetScrollU(u);
+
+		GuiLabel(Rectangle{ x + 10, y + 50, 60, 20 }, "Scroll V:");
+		if (GuiSlider(Rectangle{ x + 70, y + 50, w - 120, 20 }, "-1.0", "1.0", &v, -1.0f, 1.0f))
+			model->SetScrollV(v);
+
+		return;
+	}
+
+	GMObject& obj = grp->objects[settings.selectedObjIndex];
+
+	// Material Selector
+	GuiLabel(Rectangle{ x, y, w, 18 }, ("Submesh #" + std::to_string(settings.selectedObjIndex) + " Materials (" + std::to_string(obj.materialCount) + "):").c_str());
+	y += 22.0f;
+
+	int matIdx = 0;
+	if (obj.materialBlocks && obj.materialBlockCount > 0)
+		matIdx = obj.materialBlocks[0].materialID;
+
+	if (obj.materials && matIdx < obj.materialCount)
+	{
+		ModelMaterial& mat = obj.materials[matIdx];
+
+		// Ambient Color
+		GuiGroupBox(Rectangle{ x, y, w, 80 }, "Ambient Color (RGBA)");
+		GuiSlider(Rectangle{ x + 25, y + 16, w - 60, 14 }, "R", "", &mat.material.Ambient.r, 0.0f, 1.0f);
+		GuiSlider(Rectangle{ x + 25, y + 34, w - 60, 14 }, "G", "", &mat.material.Ambient.g, 0.0f, 1.0f);
+		GuiSlider(Rectangle{ x + 25, y + 52, w - 60, 14 }, "B", "", &mat.material.Ambient.b, 0.0f, 1.0f);
+		y += 88.0f;
+
+		// Diffuse Color
+		GuiGroupBox(Rectangle{ x, y, w, 80 }, "Diffuse Color (RGBA)");
+		GuiSlider(Rectangle{ x + 25, y + 16, w - 60, 14 }, "R", "", &mat.material.Diffuse.r, 0.0f, 1.0f);
+		GuiSlider(Rectangle{ x + 25, y + 34, w - 60, 14 }, "G", "", &mat.material.Diffuse.g, 0.0f, 1.0f);
+		GuiSlider(Rectangle{ x + 25, y + 52, w - 60, 14 }, "B", "", &mat.material.Diffuse.b, 0.0f, 1.0f);
+		y += 88.0f;
+
+		// Texture file edit
+		GuiGroupBox(Rectangle{ x, y, w, 68 }, "Texture File");
+		if (!m_editingTexture)
+		{
+			std::strncpy(m_texNameBuffer, mat.textureName, sizeof(m_texNameBuffer) - 1);
+		}
+
+		if (GuiTextBox(Rectangle{ x + 10, y + 20, w - 75, 24 }, m_texNameBuffer, sizeof(m_texNameBuffer), true))
+		{
+			m_editingTexture = true;
+		}
+
+		if (GuiButton(Rectangle{ x + w - 60, y + 20, 50, 24 }, "Apply"))
+		{
+			std::strncpy(mat.textureName, m_texNameBuffer, sizeof(mat.textureName) - 1);
+			model->LoadTextures(model->GetLoadedFilename());
+			m_editingTexture = false;
+			ShowStatusMessage("Updated texture: " + std::string(mat.textureName));
+		}
+		y += 76.0f;
+
+		// Material Block Effects
+		if (obj.materialBlocks && obj.materialBlockCount > 0)
+		{
+			MaterialBlock& blk = obj.materialBlocks[0];
+			GuiGroupBox(Rectangle{ x, y, w, 60 }, "Effects & Blending");
+
+			bool twoSided = (blk.effect & XE_2SIDE) != 0;
+			if (GuiCheckBox(Rectangle{ x + 10, y + 18, 18, 18 }, "Two-Sided", &twoSided))
+			{
+				if (twoSided) blk.effect |= XE_2SIDE;
+				else blk.effect &= ~XE_2SIDE;
+			}
+
+			bool highlight = (blk.effect & XE_HIGHLIGHT_OBJ) != 0;
+			if (GuiCheckBox(Rectangle{ x + 110, y + 18, 18, 18 }, "Additive Glow", &highlight))
+			{
+				if (highlight) blk.effect |= XE_HIGHLIGHT_OBJ;
+				else blk.effect &= ~XE_HIGHLIGHT_OBJ;
+			}
+		}
+	}
+}
+
+void UserInterface::_drawSubmeshTab(CObject3D* model, int currentLOD, RenderSettings& settings)
+{
+	float x = m_rightPanelRect.x + 8.0f;
+	float y = m_rightPanelRect.y + 36.0f;
+	float w = m_rightPanelRect.width - 16.0f;
+
+	if (!model)
+	{
+		GuiLabel(Rectangle{ x, y, w, 20 }, "No active model.");
+		return;
+	}
+
+	LODGroup* grp = model->GetGroup(currentLOD);
+	if (!grp || settings.selectedObjIndex < 0 || settings.selectedObjIndex >= grp->objectCount)
+	{
+		GuiLabel(Rectangle{ x, y, w, 20 }, "Select a submesh to edit properties.");
+		return;
+	}
+
+	GMObject& obj = grp->objects[settings.selectedObjIndex];
+
+	GuiGroupBox(Rectangle{ x, y, w, 180 }, ("Submesh #" + std::to_string(settings.selectedObjIndex)).c_str());
+	float py = y + 20.0f;
+
+	GuiLabel(Rectangle{ x + 10, py, 60, 20 }, "Type:");
+	GuiLabel(Rectangle{ x + 80, py, 120, 20 }, (obj.type == GMT_SKIN ? "Skinned Mesh" : "Normal Mesh"));
+	py += 24.0f;
+
+	GuiLabel(Rectangle{ x + 10, py, 60, 20 }, "Vertices:");
+	GuiLabel(Rectangle{ x + 80, py, 120, 20 }, std::to_string(obj.vertexCount).c_str());
+	py += 24.0f;
+
+	GuiLabel(Rectangle{ x + 10, py, 60, 20 }, "Faces:");
+	GuiLabel(Rectangle{ x + 80, py, 120, 20 }, std::to_string(obj.faceListCount).c_str());
+	py += 24.0f;
+
+	bool rigid = obj.rigid;
+	if (GuiCheckBox(Rectangle{ x + 10, py, 18, 18 }, "Rigid Body", &rigid))
+		obj.rigid = rigid;
+	py += 24.0f;
+
+	bool bump = obj.bump;
+	if (GuiCheckBox(Rectangle{ x + 10, py, 18, 18 }, "Bump Mapping", &bump))
+		obj.bump = bump;
+	py += 30.0f;
+
+	if (GuiButton(Rectangle{ x + 10, py, w - 20, 24 }, "Invert Faces (CW/CCW)"))
+	{
+		model->ChangeCW(currentLOD, settings.selectedObjIndex);
+		ShowStatusMessage("Inverted faces on submesh #" + std::to_string(settings.selectedObjIndex));
+	}
+}
+
+void UserInterface::_drawAnimationTab(SceneManager& scene)
+{
+	float x = m_rightPanelRect.x + 8.0f;
+	float y = m_rightPanelRect.y + 36.0f;
+	float w = m_rightPanelRect.width - 16.0f;
+
+	GuiGroupBox(Rectangle{ x, y, w, 110 }, "Motion & Animation");
+	float py = y + 18.0f;
+
+	int totalFrames = scene.GetTotalFrameCount();
+	std::string motPath = scene.GetActiveMotionPath();
+	std::string motName = motPath.empty() ? "(Internal / None)" : SceneManager::ExtractFileName(motPath);
+
+	GuiLabel(Rectangle{ x + 10, py, w - 20, 18 }, ("Active Motion: " + motName).c_str());
+	py += 20.0f;
+	GuiLabel(Rectangle{ x + 10, py, w - 20, 18 }, ("Keyframes: " + std::to_string(totalFrames)).c_str());
+	py += 22.0f;
+
+	if (GuiButton(Rectangle{ x + 10, py, (w - 26) / 2, 24 }, "#132# Load .mot"))
+	{
+		OpenFileDialog(DIALOG_OPEN_MOTION);
+	}
+
+	if (GuiButton(Rectangle{ x + (w - 26) / 2 + 16, py, (w - 26) / 2, 24 }, "#143# Unload"))
+	{
+		scene.UnloadMotion();
+		ShowStatusMessage("Unloaded active motion.");
+	}
+	y += 120.0f;
+
+	// Skeleton Bones Inspector
+	CObject3D* baseModel = scene.GetBaseModel();
+	int boneCount = baseModel ? baseModel->GetBoneCount() : 0;
+
+	GuiLabel(Rectangle{ x, y, w, 20 }, ("Skeleton Bones (" + std::to_string(boneCount) + "):").c_str());
+	y += 22.0f;
+
+	float bonesHeight = m_rightPanelRect.height - (y - m_rightPanelRect.y) - 10.0f;
+	DrawRectangle(x, y, w, bonesHeight, Color{ 22, 24, 28, 255 });
+	DrawRectangleLines(x, y, w, bonesHeight, Color{ 48, 52, 62, 255 });
+
+	if (boneCount == 0)
+	{
+		GuiLabel(Rectangle{ x + 10, y + 10, w - 20, 20 }, "No skeleton bones in model.");
+	}
+	else
+	{
+		const CMotion* mot = baseModel->GetMotion();
+		const Bone* boneList = mot ? mot->GetBones() : nullptr;
+
+		float rowH = 20.0f;
+		for (int i = 0; i < boneCount; i++)
+		{
+			float rowY = y + i * rowH;
+			if (rowY + rowH > y + bonesHeight) break;
+
+			std::string boneLabel = "Bone #" + std::to_string(i);
+			if (boneList && boneList[i].name[0] != '\0')
+				boneLabel += " (" + std::string(boneList[i].name) + ")";
+
+			GuiLabel(Rectangle{ x + 6, rowY + 1, w - 12, rowH - 2 }, boneLabel.c_str());
+		}
+	}
+}
+
+void UserInterface::_drawBottomBar(SceneManager& scene, float deltaTime)
+{
+	DrawRectangleRec(m_bottomBarRect, Color{ 26, 28, 34, 255 });
+	DrawLine((int)m_bottomBarRect.x, (int)m_bottomBarRect.y,
+	         (int)(m_bottomBarRect.x + m_bottomBarRect.width), (int)m_bottomBarRect.y,
+	         Color{ 48, 52, 62, 255 });
+
+	float x = m_bottomBarRect.x + 10.0f;
+	float y = m_bottomBarRect.y + 10.0f;
+	float h = 28.0f;
+
+	// Rewind to first frame
+	if (GuiButton(Rectangle{ x, y, 30, h }, "#129#"))
+	{
+		scene.SetCurrentFrame(0.0f);
+	}
+	x += 34.0f;
+
+	// Step backward
+	if (GuiButton(Rectangle{ x, y, 30, h }, "#118#"))
+	{
+		scene.StepFrame(-1);
+	}
+	x += 34.0f;
+
+	// Play / Pause toggle
+	bool isPlaying = scene.IsPlaying();
+	const char* playIcon = isPlaying ? "#132#" : "#131#";
+	if (GuiButton(Rectangle{ x, y, 36, h }, playIcon))
+	{
+		scene.TogglePlay();
+	}
+	x += 40.0f;
+
+	// Step forward
+	if (GuiButton(Rectangle{ x, y, 30, h }, "#119#"))
+	{
+		scene.StepFrame(1);
+	}
+	x += 36.0f;
+
+	// Timeline Slider
+	int totalFrames = scene.GetTotalFrameCount();
+	float currentFrame = scene.GetCurrentFrame();
+
+	float sliderWidth = m_bottomBarRect.width - 380.0f;
+	if (sliderWidth < 120.0f) sliderWidth = 120.0f;
+
+	float sliderVal = currentFrame;
+	if (GuiSlider(Rectangle{ x, y + 4, sliderWidth, 20 }, "0", std::to_string(totalFrames - 1).c_str(),
+	              &sliderVal, 0.0f, (float)(totalFrames - 1)))
+	{
+		scene.SetCurrentFrame(sliderVal);
+	}
+	x += sliderWidth + 10.0f;
+
+	// Frame counter text
+	std::string frameText = std::to_string((int)currentFrame) + " / " + std::to_string(totalFrames - 1);
+	GuiLabel(Rectangle{ x, y + 4, 70, 20 }, frameText.c_str());
+	x += 74.0f;
+
+	// Playback Speed Slider
+	float speed = scene.GetAnimSpeed();
+	GuiLabel(Rectangle{ x, y + 4, 40, 20 }, "Spd:");
+	if (GuiSlider(Rectangle{ x + 35, y + 4, 60, 20 }, "", "3x", &speed, 0.1f, 3.0f))
+	{
+		scene.SetAnimSpeed(speed);
+	}
+	x += 105.0f;
+
+	// Loop checkbox
+	bool loop = scene.IsLooping();
+	if (GuiCheckBox(Rectangle{ x, y + 4, 18, 18 }, "Loop", &loop))
+	{
+		scene.SetLooping(loop);
+	}
+}
+
+void UserInterface::_drawStatusBar(const SceneManager& scene, const OrbitCamera& camera)
+{
+	DrawRectangleRec(m_statusBarRect, Color{ 22, 24, 28, 255 });
+	DrawLine(0, (int)m_statusBarRect.y, GetScreenWidth(), (int)m_statusBarRect.y, Color{ 42, 45, 54, 255 });
+
+	float x = 10.0f;
+	float y = m_statusBarRect.y + 3.0f;
+
+	// Status Message
+	Color msgCol = m_statusIsError ? Color{ 255, 100, 100, 255 } : Color{ 200, 210, 230, 255 };
+	DrawText(m_statusMessage.c_str(), (int)x, (int)y, 11, msgCol);
+
+	// Right-aligned stats
+	int fps = GetFPS();
+	std::string stats = "Parts: " + std::to_string(scene.GetPartCount()) +
+	                    " | Dist: " + std::to_string((int)camera.GetDistance()) +
+	                    " | FPS: " + std::to_string(fps);
+
+	int textW = MeasureText(stats.c_str(), 11);
+	DrawText(stats.c_str(), GetScreenWidth() - textW - 12, (int)y, 11, Color{ 150, 160, 180, 255 });
+}
+
+void UserInterface::_drawFileDialog(SceneManager& scene, OrbitCamera& camera)
+{
+	float boxW = 540.0f;
+	float boxH = 400.0f;
+	float boxX = (GetScreenWidth() - boxW) / 2.0f;
+	float boxY = (GetScreenHeight() - boxH) / 2.0f;
+
 	// Dim background
 	DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Color{ 0, 0, 0, 160 });
 
-	float dlgW = 600.0f;
-	float dlgH = 460.0f;
-	float dlgX = (GetScreenWidth() - dlgW) * 0.5f;
-	float dlgY = (GetScreenHeight() - dlgH) * 0.5f;
+	// Modal panel
+	DrawRectangle(boxX, boxY, boxW, boxH, Color{ 30, 33, 40, 255 });
+	DrawRectangleLines(boxX, boxY, boxW, boxH, Color{ 60, 70, 90, 255 });
 
-	Rectangle dlgRect = { dlgX, dlgY, dlgW, dlgH };
+	const char* title = "Select File";
+	if (m_fileDialog.target == DIALOG_OPEN_MODEL) title = "Open Flyff 3D Model (.o3d)";
+	else if (m_fileDialog.target == DIALOG_APPEND_MODEL) title = "Append Model to Scene (.o3d)";
+	else if (m_fileDialog.target == DIALOG_SAVE_MODEL) title = "Save Flyff 3D Model (.o3d)";
+	else if (m_fileDialog.target == DIALOG_OPEN_MOTION) title = "Load Animation Motion (.mot)";
+	else if (m_fileDialog.target == DIALOG_OPEN_SKELETON) title = "Load Skeleton (.bon)";
+	else if (m_fileDialog.target == DIALOG_SELECT_FOLDER) title = "Select Directory to Scan";
 
-	// Dialog background
-	DrawRectangleRec(dlgRect, Color{ 36, 40, 48, 255 });
-	DrawRectangleLinesEx(dlgRect, 2, Color{ 65, 75, 95, 255 });
+	DrawRectangle(boxX, boxY, boxW, 30, Color{ 40, 45, 58, 255 });
+	DrawText(title, boxX + 12, boxY + 8, 12, Color{ 230, 235, 245, 255 });
 
-	// Title bar
-	DrawRectangle(dlgX, dlgY, dlgW, 32, Color{ 48, 54, 66, 255 });
-	const char* title = m_fileDialog.isSaveMode ? "Save Flyff .o3d Model" : "Open Flyff .o3d Model";
-	DrawText(title, (int)dlgX + 12, (int)dlgY + 8, 14, Color{ 230, 235, 245, 255 });
-
-	// Close button
-	if (GuiButton(Rectangle{ dlgX + dlgW - 28, dlgY + 4, 24, 24 }, "X"))
+	// Close 'X' button
+	if (GuiButton(Rectangle{ boxX + boxW - 26, boxY + 4, 22, 22 }, "X"))
 	{
 		m_fileDialog.active = false;
 	}
 
-	float x = dlgX + 16.0f;
-	float y = dlgY + 42.0f;
-	float w = dlgW - 32.0f;
+	float px = boxX + 12.0f;
+	float py = boxY + 38.0f;
+	float pw = boxW - 24.0f;
 
-	// Current Path display
-	DrawText("Folder:", (int)x, (int)y + 4, 11, Color{ 180, 185, 200, 255 });
-	GuiTextBox(Rectangle{ x + 50, y, w - 120, 24 }, m_fileDialog.manualPathBuffer, sizeof(m_fileDialog.manualPathBuffer), true);
+	// Path header & Up button
+	GuiLabel(Rectangle{ px, py, 40, 22 }, "Path:");
+	GuiTextBox(Rectangle{ px + 40, py, pw - 85, 22 }, (char*)m_fileDialog.currentPath.c_str(), 256, false);
 
-	if (GuiButton(Rectangle{ x + w - 60, y, 60, 24 }, "Go"))
+	if (GuiButton(Rectangle{ px + pw - 40, py, 40, 22 }, "Up"))
 	{
-		m_fileDialog.currentPath = m_fileDialog.manualPathBuffer;
-		_refreshDirectoryContents();
-	}
-	y += 32.0f;
-
-	// File / Directory List box
-	Rectangle listRect = { x, y, w, 280 };
-	DrawRectangleRec(listRect, Color{ 24, 26, 32, 255 });
-	DrawRectangleLinesEx(listRect, 1, Color{ 55, 60, 75, 255 });
-
-	float itemY = y + 4.0f;
-	int itemIndex = 0;
-
-	// List directories
-	for (const auto& d : m_fileDialog.directories)
-	{
-		if (itemY > y + listRect.height - 24.0f) break;
-
-		Rectangle itemR = { x + 4, itemY, w - 8, 20 };
-		bool isHover = CheckCollisionPointRec(GetMousePosition(), itemR);
-
-		if (isHover)
+		fs::path p(m_fileDialog.currentPath);
+		if (p.has_parent_path())
 		{
-			DrawRectangleRec(itemR, Color{ 50, 60, 80, 255 });
-			if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+			m_fileDialog.currentPath = p.parent_path().string();
+			_refreshDirectoryContents();
+		}
+	}
+	py += 30.0f;
+
+	// Directories and Files List View
+	float listW = (pw - 8.0f) / 2.0f;
+	float listH = 240.0f;
+
+	GuiLabel(Rectangle{ px, py, listW, 18 }, "Directories:");
+	GuiLabel(Rectangle{ px + listW + 8, py, listW, 18 }, "Files:");
+	py += 20.0f;
+
+	// Directory List
+	DrawRectangle(px, py, listW, listH, Color{ 20, 22, 26, 255 });
+	DrawRectangleLines(px, py, listW, listH, Color{ 50, 55, 68, 255 });
+
+	float itemH = 22.0f;
+	for (size_t i = 0; i < m_fileDialog.directories.size(); i++)
+	{
+		float dy = py + i * itemH;
+		if (dy + itemH > py + listH) break;
+
+		std::string dName = "[Dir] " + m_fileDialog.directories[i];
+		if (GuiButton(Rectangle{ px + 2, dy + 1, listW - 4, itemH - 2 }, dName.c_str()))
+		{
+			if (m_fileDialog.directories[i] == "..")
 			{
-				if (d == "..")
+				fs::path p(m_fileDialog.currentPath);
+				if (p.has_parent_path())
+					m_fileDialog.currentPath = p.parent_path().string();
+			}
+			else
+			{
+				m_fileDialog.currentPath = (fs::path(m_fileDialog.currentPath) / m_fileDialog.directories[i]).string();
+			}
+			_refreshDirectoryContents();
+			break;
+		}
+	}
+
+	// File List
+	float fx = px + listW + 8.0f;
+	DrawRectangle(fx, py, listW, listH, Color{ 20, 22, 26, 255 });
+	DrawRectangleLines(fx, py, listW, listH, Color{ 50, 55, 68, 255 });
+
+	for (size_t i = 0; i < m_fileDialog.files.size(); i++)
+	{
+		float fy = py + i * itemH;
+		if (fy + itemH > py + listH) break;
+
+		bool isSel = ((int)i == m_fileDialog.selectedIndex);
+		if (isSel)
+			DrawRectangle((int)fx + 2, (int)fy + 1, (int)listW - 4, (int)itemH - 2, Color{ 40, 70, 110, 255 });
+
+		if (GuiButton(Rectangle{ fx + 2, fy + 1, listW - 4, itemH - 2 }, m_fileDialog.files[i].c_str()))
+		{
+			m_fileDialog.selectedIndex = (int)i;
+			m_fileDialog.selectedFile = m_fileDialog.files[i];
+		}
+	}
+	py += listH + 10.0f;
+
+	// File Name input (for Save or Open)
+	GuiLabel(Rectangle{ px, py, 70, 24 }, "Filename:");
+	char fnBuffer[256];
+	std::memset(fnBuffer, 0, sizeof(fnBuffer));
+	std::strncpy(fnBuffer, m_fileDialog.selectedFile.c_str(), sizeof(fnBuffer) - 1);
+
+	if (GuiTextBox(Rectangle{ px + 75, py, pw - 235, 24 }, fnBuffer, sizeof(fnBuffer), true))
+	{
+		m_fileDialog.selectedFile = fnBuffer;
+	}
+
+	// OK / Select Button
+	const char* okLabel = (m_fileDialog.target == DIALOG_SAVE_MODEL) ? "Save" : "Select";
+	if (GuiButton(Rectangle{ px + pw - 150, py, 70, 24 }, okLabel))
+	{
+		std::string finalPath;
+		if (m_fileDialog.target == DIALOG_SELECT_FOLDER)
+		{
+			finalPath = m_fileDialog.currentPath;
+			m_scanner.SetCurrentFolder(finalPath);
+			ShowStatusMessage("Selected folder: " + finalPath);
+		}
+		else if (!m_fileDialog.selectedFile.empty())
+		{
+			finalPath = (fs::path(m_fileDialog.currentPath) / m_fileDialog.selectedFile).string();
+
+			if (m_fileDialog.target == DIALOG_OPEN_MODEL)
+			{
+				if (scene.LoadBaseModel(finalPath))
 				{
-					// Go up one directory
-					std::string cp = m_fileDialog.currentPath;
-					if (cp.length() > 1 && cp.back() == '/') cp.pop_back();
-					size_t p = cp.find_last_of("/\\");
-					if (p != std::string::npos)
-						m_fileDialog.currentPath = cp.substr(0, p + 1);
-					else
-						m_fileDialog.currentPath = "./";
+					ShowStatusMessage("Loaded model: " + m_fileDialog.selectedFile);
+					camera.FrameModel(scene.GetCombinedBounds());
 				}
 				else
+					ShowStatusMessage("Failed to load: " + m_fileDialog.selectedFile, 4.0f, true);
+			}
+			else if (m_fileDialog.target == DIALOG_APPEND_MODEL)
+			{
+				if (scene.AppendModel(finalPath))
 				{
-					if (m_fileDialog.currentPath.back() != '/') m_fileDialog.currentPath += "/";
-					m_fileDialog.currentPath += d + "/";
+					ShowStatusMessage("Appended model: " + m_fileDialog.selectedFile);
+					camera.FrameModel(scene.GetCombinedBounds());
 				}
-				std::strncpy(m_fileDialog.manualPathBuffer, m_fileDialog.currentPath.c_str(), sizeof(m_fileDialog.manualPathBuffer) - 1);
-				_refreshDirectoryContents();
-				break;
+				else
+					ShowStatusMessage("Failed to append: " + m_fileDialog.selectedFile, 4.0f, true);
+			}
+			else if (m_fileDialog.target == DIALOG_OPEN_MOTION)
+			{
+				if (scene.LoadMotion(finalPath))
+					ShowStatusMessage("Loaded motion: " + m_fileDialog.selectedFile);
+				else
+					ShowStatusMessage("Failed to load motion: " + m_fileDialog.selectedFile, 4.0f, true);
+			}
+			else if (m_fileDialog.target == DIALOG_OPEN_SKELETON)
+			{
+				if (scene.LoadSkeleton(finalPath))
+					ShowStatusMessage("Loaded skeleton: " + m_fileDialog.selectedFile);
+				else
+					ShowStatusMessage("Failed to load skeleton: " + m_fileDialog.selectedFile, 4.0f, true);
+			}
+			else if (m_fileDialog.target == DIALOG_SAVE_MODEL)
+			{
+				CObject3D* activeModel = scene.GetActiveModel();
+				if (activeModel)
+				{
+					if (activeModel->Save(finalPath))
+						ShowStatusMessage("Saved model: " + m_fileDialog.selectedFile);
+					else
+						ShowStatusMessage("Failed to save: " + m_fileDialog.selectedFile, 4.0f, true);
+				}
 			}
 		}
 
-		DrawText(TextFormat("[DIR] %s", d.c_str()), (int)x + 8, (int)itemY + 4, 11, Color{ 140, 190, 255, 255 });
-		itemY += 22.0f;
-		itemIndex++;
+		m_fileDialog.active = false;
 	}
 
-	// List files
-	for (const auto& f : m_fileDialog.files)
-	{
-		if (itemY > y + listRect.height - 24.0f) break;
-
-		Rectangle itemR = { x + 4, itemY, w - 8, 20 };
-		bool isSel = (m_fileDialog.selectedFile == f);
-		bool isHover = CheckCollisionPointRec(GetMousePosition(), itemR);
-
-		if (isSel)
-			DrawRectangleRec(itemR, Color{ 40, 90, 160, 255 });
-		else if (isHover)
-			DrawRectangleRec(itemR, Color{ 45, 52, 68, 255 });
-
-		if (isHover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
-		{
-			m_fileDialog.selectedFile = f;
-			std::string fullPath = m_fileDialog.currentPath;
-			if (fullPath.back() != '/') fullPath += "/";
-			fullPath += f;
-			std::strncpy(m_fileDialog.manualPathBuffer, fullPath.c_str(), sizeof(m_fileDialog.manualPathBuffer) - 1);
-		}
-
-		Color col = IsO3DFile(f) ? Color{ 220, 240, 180, 255 } : Color{ 180, 180, 180, 255 };
-		DrawText(f.c_str(), (int)x + 20, (int)itemY + 4, 11, isSel ? WHITE : col);
-		itemY += 22.0f;
-		itemIndex++;
-	}
-
-	y += 292.0f;
-
-	// Bottom action bar
-	std::string actionName = m_fileDialog.isSaveMode ? "Save" : "Open";
-
-	if (GuiButton(Rectangle{ dlgX + dlgW - 190, y, 80, 28 }, actionName.c_str()) ||
-	    (IsKeyPressed(KEY_ENTER) && m_fileDialog.active))
-	{
-		std::string chosenPath = m_fileDialog.manualPathBuffer;
-		if (!chosenPath.empty())
-		{
-			if (m_fileDialog.isSaveMode)
-				m_fileToSave = chosenPath;
-			else
-				m_fileToOpen = chosenPath;
-			m_fileDialog.active = false;
-		}
-	}
-
-	if (GuiButton(Rectangle{ dlgX + dlgW - 100, y, 80, 28 }, "Cancel") ||
-	    (IsKeyPressed(KEY_ESCAPE) && m_fileDialog.active))
+	// Cancel Button
+	if (GuiButton(Rectangle{ px + pw - 70, py, 70, 24 }, "Cancel"))
 	{
 		m_fileDialog.active = false;
 	}
