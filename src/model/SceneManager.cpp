@@ -686,7 +686,13 @@ void SceneManager::UpdateAnimation(float deltaTime)
 		}
 		else if (m_currentFrame < 0.0f)
 		{
-			m_currentFrame = (float)(total - 1);
+			if (m_loop)
+				m_currentFrame = (float)(total - 1);
+			else
+			{
+				m_currentFrame = 0.0f;
+				m_isPlaying = false;
+			}
 		}
 	}
 

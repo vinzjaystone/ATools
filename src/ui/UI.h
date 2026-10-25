@@ -91,6 +91,7 @@ private:
 	char m_texNameBuffer[256];
 	bool m_editingTexture;
 
+	void _initTheme();
 	void _updateLayout(int screenWidth, int screenHeight, bool hasAnimation);
 	void _drawTopBar(SceneManager& scene, OrbitCamera& camera, RenderSettings& settings);
 

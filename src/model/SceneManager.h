@@ -99,11 +99,23 @@ public:
 	void SetAnimSpeed(float speed) { m_animSpeed = speed; }
 
 	bool IsPlaying() const { return m_isPlaying; }
-	void SetPlaying(bool playing) { m_isPlaying = playing; }
-	void TogglePlay() { m_isPlaying = !m_isPlaying; }
+	void SetPlaying(bool playing)
+	{
+		m_isPlaying = playing;
+		if (m_isPlaying)
+		{
+			int total = GetTotalFrameCount();
+			if (total > 0 && m_currentFrame >= (float)(total - 1))
+			{
+				m_currentFrame = 0.0f;
+			}
+		}
+	}
+	void TogglePlay() { SetPlaying(!m_isPlaying); }
 
 	bool IsLooping() const { return m_loop; }
 	void SetLooping(bool loop) { m_loop = loop; }
+	void ToggleLoop() { m_loop = !m_loop; }
 
 	void StepFrame(int delta);
 
