@@ -29,14 +29,97 @@ UserInterface::UserInterface()
 	std::memset(m_searchBuffer, 0, sizeof(m_searchBuffer));
 	std::memset(m_texNameBuffer, 0, sizeof(m_texNameBuffer));
 
-	// Style configurations for raygui
-	GuiSetStyle(DEFAULT, TEXT_SIZE, 12);
-	GuiSetStyle(DEFAULT, BACKGROUND_COLOR, 0x22252cff);
-	GuiSetStyle(LABEL, TEXT_COLOR_NORMAL, 0xd0d5e0ff);
-	GuiSetStyle(BUTTON, TEXT_COLOR_NORMAL, 0xedf0f5ff);
+	_initTheme();
 
 	// Initial scan of current directory
 	m_scanner.Scan("./", false);
+}
+
+void UserInterface::_initTheme()
+{
+	GuiLoadStyleDefault();
+
+	// Global properties
+	GuiSetStyle(DEFAULT, TEXT_SIZE, 12);
+	GuiSetStyle(DEFAULT, BACKGROUND_COLOR, 0x1a1d24ff);
+	GuiSetStyle(DEFAULT, LINE_COLOR, 0x424b5eff);
+
+	// General control base colors (High-Contrast Modern Dark Theme)
+	GuiSetStyle(DEFAULT, BORDER_COLOR_NORMAL,   0x454d60ff);
+	GuiSetStyle(DEFAULT, BASE_COLOR_NORMAL,     0x282d3bff);
+	GuiSetStyle(DEFAULT, TEXT_COLOR_NORMAL,     0xf0f4f8ff);
+
+	GuiSetStyle(DEFAULT, BORDER_COLOR_FOCUSED,  0x60a5faff);
+	GuiSetStyle(DEFAULT, BASE_COLOR_FOCUSED,    0x384154ff);
+	GuiSetStyle(DEFAULT, TEXT_COLOR_FOCUSED,    0xffffffff);
+
+	GuiSetStyle(DEFAULT, BORDER_COLOR_PRESSED,  0x93c5fdff);
+	GuiSetStyle(DEFAULT, BASE_COLOR_PRESSED,    0x2563ebff);
+	GuiSetStyle(DEFAULT, TEXT_COLOR_PRESSED,    0xffffffff);
+
+	GuiSetStyle(DEFAULT, BORDER_COLOR_DISABLED, 0x2d323eff);
+	GuiSetStyle(DEFAULT, BASE_COLOR_DISABLED,   0x1c1f28ff);
+	GuiSetStyle(DEFAULT, TEXT_COLOR_DISABLED,   0x6b7280ff);
+
+	// Buttons (Dark slate background with bright white text)
+	GuiSetStyle(BUTTON, BORDER_COLOR_NORMAL,    0x485268ff);
+	GuiSetStyle(BUTTON, BASE_COLOR_NORMAL,      0x2c3344ff);
+	GuiSetStyle(BUTTON, TEXT_COLOR_NORMAL,      0xffffffff);
+	GuiSetStyle(BUTTON, BORDER_COLOR_FOCUSED,   0x60a5faff);
+	GuiSetStyle(BUTTON, BASE_COLOR_FOCUSED,     0x3d475eff);
+	GuiSetStyle(BUTTON, TEXT_COLOR_FOCUSED,     0xffffffff);
+	GuiSetStyle(BUTTON, BORDER_COLOR_PRESSED,   0x93c5fdff);
+	GuiSetStyle(BUTTON, BASE_COLOR_PRESSED,     0x2563ebff);
+	GuiSetStyle(BUTTON, TEXT_COLOR_PRESSED,     0xffffffff);
+	GuiSetStyle(BUTTON, BORDER_WIDTH,           1);
+
+	// Toggle buttons (Unselected: dark; Selected: bright blue with white text)
+	GuiSetStyle(TOGGLE, BORDER_COLOR_NORMAL,    0x40485aff);
+	GuiSetStyle(TOGGLE, BASE_COLOR_NORMAL,      0x242834ff);
+	GuiSetStyle(TOGGLE, TEXT_COLOR_NORMAL,      0xd1d5dbff);
+	GuiSetStyle(TOGGLE, BORDER_COLOR_FOCUSED,   0x60a5faff);
+	GuiSetStyle(TOGGLE, BASE_COLOR_FOCUSED,     0x323848ff);
+	GuiSetStyle(TOGGLE, TEXT_COLOR_FOCUSED,     0xffffffff);
+	GuiSetStyle(TOGGLE, BORDER_COLOR_PRESSED,   0x60a5faff);
+	GuiSetStyle(TOGGLE, BASE_COLOR_PRESSED,     0x2563ebff);
+	GuiSetStyle(TOGGLE, TEXT_COLOR_PRESSED,     0xffffffff);
+
+	// Labels
+	GuiSetStyle(LABEL, TEXT_COLOR_NORMAL,       0xf1f5f9ff);
+	GuiSetStyle(LABEL, TEXT_COLOR_FOCUSED,      0xffffffff);
+
+	// TextBoxes
+	GuiSetStyle(TEXTBOX, BORDER_COLOR_NORMAL,   0x454d60ff);
+	GuiSetStyle(TEXTBOX, BASE_COLOR_NORMAL,     0x14161eff);
+	GuiSetStyle(TEXTBOX, TEXT_COLOR_NORMAL,     0xffffffff);
+	GuiSetStyle(TEXTBOX, BORDER_COLOR_FOCUSED,  0x60a5faff);
+	GuiSetStyle(TEXTBOX, BASE_COLOR_FOCUSED,    0x1c1f2aff);
+	GuiSetStyle(TEXTBOX, TEXT_COLOR_FOCUSED,    0xffffffff);
+	GuiSetStyle(TEXTBOX, BORDER_COLOR_PRESSED,  0x3b82f6ff);
+	GuiSetStyle(TEXTBOX, BASE_COLOR_PRESSED,    0x14161eff);
+	GuiSetStyle(TEXTBOX, TEXT_COLOR_PRESSED,    0xffffffff);
+
+	// CheckBoxes
+	GuiSetStyle(CHECKBOX, BORDER_COLOR_NORMAL,  0x4b5563ff);
+	GuiSetStyle(CHECKBOX, BASE_COLOR_NORMAL,    0x1a1d24ff);
+	GuiSetStyle(CHECKBOX, TEXT_COLOR_NORMAL,    0xf1f5f9ff);
+	GuiSetStyle(CHECKBOX, BORDER_COLOR_FOCUSED, 0x60a5faff);
+	GuiSetStyle(CHECKBOX, BASE_COLOR_FOCUSED,   0x282d3bff);
+	GuiSetStyle(CHECKBOX, TEXT_COLOR_FOCUSED,   0xffffffff);
+	GuiSetStyle(CHECKBOX, BORDER_COLOR_PRESSED, 0x93c5fdff);
+	GuiSetStyle(CHECKBOX, BASE_COLOR_PRESSED,   0x2563ebff);
+	GuiSetStyle(CHECKBOX, TEXT_COLOR_PRESSED,   0xffffffff);
+
+	// Sliders
+	GuiSetStyle(SLIDER, BORDER_COLOR_NORMAL,    0x3c4354ff);
+	GuiSetStyle(SLIDER, BASE_COLOR_NORMAL,      0x161820ff);
+	GuiSetStyle(SLIDER, TEXT_COLOR_NORMAL,      0xd1d5dbff);
+	GuiSetStyle(SLIDER, BORDER_COLOR_FOCUSED,   0x4b5563ff);
+	GuiSetStyle(SLIDER, BASE_COLOR_FOCUSED,     0x3b82f6ff);
+	GuiSetStyle(SLIDER, TEXT_COLOR_FOCUSED,     0xffffffff);
+	GuiSetStyle(SLIDER, BORDER_COLOR_PRESSED,   0x60a5faff);
+	GuiSetStyle(SLIDER, BASE_COLOR_PRESSED,     0x2563ebff);
+	GuiSetStyle(SLIDER, TEXT_COLOR_PRESSED,     0xffffffff);
 }
 
 UserInterface::~UserInterface()
@@ -1252,11 +1335,12 @@ void UserInterface::_drawBottomBar(SceneManager& scene, float deltaTime)
 	}
 	x += 80.0f;
 
-	// Loop checkbox
+	// Loop toggle button / checkbox
 	bool loop = scene.IsLooping();
-	if (GuiCheckBox(Rectangle{ x, y + 4, 18, 18 }, "Loop", &loop))
+	if (GuiToggle(Rectangle{ x, y + 2, 60, 24 }, loop ? "#133# Loop" : "Once", &loop))
 	{
 		scene.SetLooping(loop);
+		ShowStatusMessage(loop ? "Animation Loop: ON" : "Animation Loop: OFF (Single pass)");
 	}
 }
 
