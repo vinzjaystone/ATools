@@ -134,6 +134,90 @@ bool SceneManager::AppendModel(const std::string& filepath)
 	part.currentLOD = 0;
 	part.attachBoneID = -1;
 
+	// If the model is a rigid accessory/weapon (not skinned), auto-detect sensible default bone socket
+	if (!newModel->HasSkin())
+	{
+		std::string fnLower = part.filename;
+		std::transform(fnLower.begin(), fnLower.end(), fnLower.begin(), ::tolower);
+
+		CObject3D* base = GetBaseModel();
+		int boneCount = base ? base->GetEffectiveBoneCount() : 0;
+
+		if (fnLower.find("shield") != std::string::npos || fnLower.find("lwea") != std::string::npos)
+		{
+			// Left Hand (LH) socket
+			int lhBone = -1;
+			if (base)
+			{
+				const Bone* bones = base->GetSkeleton() ? base->GetSkeleton()->GetBones() : (base->GetMotion() ? base->GetMotion()->GetBones() : nullptr);
+				if (bones)
+				{
+					for (int b = 0; b < boneCount; b++)
+					{
+						std::string bName = bones[b].name;
+						std::transform(bName.begin(), bName.end(), bName.begin(), ::tolower);
+						if (bName.find("l hand") != std::string::npos || bName.find("shield") != std::string::npos)
+						{
+							lhBone = b;
+							break;
+						}
+					}
+				}
+			}
+			part.attachBoneID = (lhBone >= 0) ? lhBone : 5;
+		}
+		else if (fnLower.find("wea") != std::string::npos || fnLower.find("sword") != std::string::npos ||
+		         fnLower.find("axe") != std::string::npos || fnLower.find("bow") != std::string::npos ||
+		         fnLower.find("wand") != std::string::npos || fnLower.find("staff") != std::string::npos ||
+		         fnLower.find("knuckle") != std::string::npos)
+		{
+			// Right Hand (RH) socket
+			int rhBone = -1;
+			if (base)
+			{
+				const Bone* bones = base->GetSkeleton() ? base->GetSkeleton()->GetBones() : (base->GetMotion() ? base->GetMotion()->GetBones() : nullptr);
+				if (bones)
+				{
+					for (int b = 0; b < boneCount; b++)
+					{
+						std::string bName = bones[b].name;
+						std::transform(bName.begin(), bName.end(), bName.begin(), ::tolower);
+						if (bName.find("r hand") != std::string::npos || bName.find("weapon") != std::string::npos)
+						{
+							rhBone = b;
+							break;
+						}
+					}
+				}
+			}
+			part.attachBoneID = (rhBone >= 0) ? rhBone : 4;
+		}
+		else if (fnLower.find("hat") != std::string::npos || fnLower.find("cap") != std::string::npos ||
+		         fnLower.find("helm") != std::string::npos || fnLower.find("mask") != std::string::npos)
+		{
+			// Head socket
+			int headBone = -1;
+			if (base)
+			{
+				const Bone* bones = base->GetSkeleton() ? base->GetSkeleton()->GetBones() : (base->GetMotion() ? base->GetMotion()->GetBones() : nullptr);
+				if (bones)
+				{
+					for (int b = 0; b < boneCount; b++)
+					{
+						std::string bName = bones[b].name;
+						std::transform(bName.begin(), bName.end(), bName.begin(), ::tolower);
+						if (bName.find("head") != std::string::npos)
+						{
+							headBone = b;
+							break;
+						}
+					}
+				}
+			}
+			part.attachBoneID = (headBone >= 0) ? headBone : 3;
+		}
+	}
+
 	m_parts.push_back(part);
 	m_activePartIndex = (int)m_parts.size() - 1;
 
@@ -615,8 +699,9 @@ void SceneManager::UpdateAnimation(float deltaTime)
 
 		base->Animate(m_currentFrame, nextFrame, m_parts[0].currentLOD);
 
-		D3DXMATRIX* baseBones = base->GetBaseBones();
-		D3DXMATRIX* baseInvBones = base->GetBaseInvBones();
+		D3DXMATRIX* baseBones = base->GetEffectiveBones();
+		D3DXMATRIX* baseInvBones = base->GetEffectiveInvBones();
+		int baseBoneCount = base->GetEffectiveBoneCount();
 
 		for (size_t i = 1; i < m_parts.size(); i++)
 		{
@@ -624,7 +709,7 @@ void SceneManager::UpdateAnimation(float deltaTime)
 			if (part.model && part.visible)
 			{
 				if (baseBones && baseInvBones)
-					part.model->SetExternBones(baseBones, baseInvBones);
+					part.model->SetExternBones(baseBones, baseInvBones, baseBoneCount);
 
 				part.model->Animate(m_currentFrame, nextFrame, part.currentLOD);
 			}
@@ -642,15 +727,17 @@ void SceneManager::_rebuildBoneLinks()
 	CObject3D* base = GetBaseModel();
 	if (!base) return;
 
-	D3DXMATRIX* baseBones = base->GetBaseBones();
-	D3DXMATRIX* baseInvBones = base->GetBaseInvBones();
+	D3DXMATRIX* baseBones = base->GetEffectiveBones();
+	D3DXMATRIX* baseInvBones = base->GetEffectiveInvBones();
+	int baseBoneCount = base->GetEffectiveBoneCount();
 
 	for (size_t i = 1; i < m_parts.size(); i++)
 	{
 		ScenePart& part = m_parts[i];
-		if (part.model && baseBones && baseInvBones)
+		if (part.model)
 		{
-			part.model->SetExternBones(baseBones, baseInvBones);
+			if (baseBones && baseInvBones)
+				part.model->SetExternBones(baseBones, baseInvBones, baseBoneCount);
 		}
 	}
 }

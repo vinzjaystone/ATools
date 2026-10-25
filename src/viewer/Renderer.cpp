@@ -424,7 +424,7 @@ void SceneRenderer::_drawSkinGMObject(const GMObject& obj, const D3DXMATRIX& roo
 	std::vector<D3DXVECTOR3> transPos(obj.vertexCount);
 	std::vector<D3DXVECTOR3> transNorm(obj.vertexCount);
 
-	int boneCount = model ? model->GetBoneCount() : 0;
+	int boneCount = model ? model->GetEffectiveBoneCount() : 0;
 
 	for (int v = 0; v < obj.vertexCount; v++)
 	{
@@ -698,14 +698,34 @@ void SceneRenderer::RenderScene(const SceneManager& scene, const OrbitCamera& ca
 		D3DXMATRIX rootTransform;
 		D3DXMatrixIdentity(&rootTransform);
 
+		D3DXMATRIX partLocal;
+		D3DXMatrixIdentity(&partLocal);
+		if (part->scale != 1.0f || part->offset.x != 0.0f || part->offset.y != 0.0f || part->offset.z != 0.0f ||
+		    part->rotation.x != 0.0f || part->rotation.y != 0.0f || part->rotation.z != 0.0f)
+		{
+			D3DXMATRIX matS, matR, matT;
+			D3DXMatrixScaling(&matS, part->scale, part->scale, part->scale);
+			D3DXMatrixRotationYawPitchRoll(&matR, part->rotation.y, part->rotation.x, part->rotation.z);
+			D3DXMatrixTranslation(&matT, part->offset.x, part->offset.y, part->offset.z);
+			partLocal = matS * matR * matT;
+		}
+
 		// If attached to a specific bone socket on the base model
 		if (part->attachBoneID >= 0 && baseModel)
 		{
-			D3DXMATRIX* baseBones = baseModel->GetBaseBones();
-			if (baseBones && part->attachBoneID < baseModel->GetBoneCount())
+			D3DXMATRIX* activeBones = baseModel->GetEffectiveBones();
+			if (activeBones && part->attachBoneID < baseModel->GetEffectiveBoneCount())
 			{
-				rootTransform = baseBones[part->attachBoneID];
+				rootTransform = partLocal * activeBones[part->attachBoneID];
 			}
+			else
+			{
+				rootTransform = partLocal;
+			}
+		}
+		else
+		{
+			rootTransform = partLocal;
 		}
 
 		bool isSelectedPart = (p == activeIdx);

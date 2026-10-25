@@ -152,6 +152,14 @@ D3DXMATRIX* D3DXMatrixRotationQuaternion(D3DXMATRIX* out, const D3DXQUATERNION* 
 	return out;
 }
 
+D3DXMATRIX* D3DXMatrixRotationYawPitchRoll(D3DXMATRIX* out, float yaw, float pitch, float roll)
+{
+	if (!out) return nullptr;
+	D3DXQUATERNION q;
+	D3DXQuaternionRotationYawPitchRoll(&q, yaw, pitch, roll);
+	return D3DXMatrixRotationQuaternion(out, &q);
+}
+
 D3DXMATRIX* D3DXMatrixTranspose(D3DXMATRIX* out, const D3DXMATRIX* in)
 {
 	if (!out || !in) return nullptr;
