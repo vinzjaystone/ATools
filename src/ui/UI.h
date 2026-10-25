@@ -85,6 +85,7 @@ private:
 	int m_scenePartsScroll;
 	int m_hierarchyScroll;
 	int m_bonesScroll;
+	int m_animListScroll;
 
 	// Material editing temp buffers
 	char m_texNameBuffer[256];

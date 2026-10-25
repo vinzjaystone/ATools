@@ -6,6 +6,16 @@
 #include <string>
 #include <vector>
 
+struct ModelAnimationItem
+{
+	std::string filename;
+	std::string displayName;
+	std::string filepath;
+	int frameCount;
+
+	ModelAnimationItem() : frameCount(0) {}
+};
+
 struct ScenePart
 {
 	CObject3D* model;
@@ -46,6 +56,17 @@ public:
 	bool LoadSkeleton(const std::string& filepath);
 	void UnloadMotion();
 	void UnloadSkeleton();
+
+	// Multi-animation management
+	void DiscoverAvailableAnimations(const std::string& modelFilepath);
+	bool SelectAnimation(int index);
+	bool SelectAnimationByName(const std::string& animName);
+	bool NextAnimation();
+	bool PrevAnimation();
+
+	const std::vector<ModelAnimationItem>& GetAvailableAnimations() const { return m_availableAnimations; }
+	int GetCurrentAnimationIndex() const { return m_currentAnimationIndex; }
+	std::string GetCurrentAnimationDisplayName() const;
 
 	void RemovePart(int index);
 	void ClearAppendedParts();
@@ -98,6 +119,9 @@ private:
 	int m_activePartIndex;
 	std::string m_activeMotionPath;
 	std::string m_activeSkeletonPath;
+
+	std::vector<ModelAnimationItem> m_availableAnimations;
+	int m_currentAnimationIndex;
 
 	float m_currentFrame;
 	float m_animSpeed;

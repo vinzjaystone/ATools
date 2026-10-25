@@ -145,6 +145,16 @@ int main(int argc, char* argv[])
 				scene.StepFrame(-1);
 			if (IsKeyPressed(KEY_RIGHT))
 				scene.StepFrame(1);
+			if (IsKeyPressed(KEY_LEFT_BRACKET))
+			{
+				scene.PrevAnimation();
+				ui.ShowStatusMessage("Selected animation: " + scene.GetCurrentAnimationDisplayName());
+			}
+			if (IsKeyPressed(KEY_RIGHT_BRACKET))
+			{
+				scene.NextAnimation();
+				ui.ShowStatusMessage("Selected animation: " + scene.GetCurrentAnimationDisplayName());
+			}
 
 			// LOD shortcuts for active part
 			ScenePart* activePart = scene.GetPart(scene.GetActivePartIndex());
@@ -157,6 +167,16 @@ int main(int argc, char* argv[])
 		}
 		else // Control is held
 		{
+			if (IsKeyPressed(KEY_LEFT))
+			{
+				scene.PrevAnimation();
+				ui.ShowStatusMessage("Selected animation: " + scene.GetCurrentAnimationDisplayName());
+			}
+			if (IsKeyPressed(KEY_RIGHT))
+			{
+				scene.NextAnimation();
+				ui.ShowStatusMessage("Selected animation: " + scene.GetCurrentAnimationDisplayName());
+			}
 			if (IsKeyPressed(KEY_O))
 				ui.OpenFileDialog(DIALOG_OPEN_MODEL);
 			if (IsKeyPressed(KEY_A) && shiftDown)

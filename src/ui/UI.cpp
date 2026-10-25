@@ -23,6 +23,7 @@ UserInterface::UserInterface()
 	  m_scenePartsScroll(0),
 	  m_hierarchyScroll(0),
 	  m_bonesScroll(0),
+	  m_animListScroll(0),
 	  m_editingTexture(false)
 {
 	std::memset(m_searchBuffer, 0, sizeof(m_searchBuffer));
@@ -993,54 +994,101 @@ void UserInterface::_drawAnimationTab(SceneManager& scene)
 	std::string skelPath = scene.GetActiveSkeletonPath();
 	std::string skelName = skelPath.empty() ? (boneCount > 0 ? "(Internal / Loaded)" : "(None)") : SceneManager::ExtractFileName(skelPath);
 
-	GuiGroupBox(Rectangle{ x, y, w, 88 }, "Skeleton (.chr / .bon)");
-	float py = y + 16.0f;
-	GuiLabel(Rectangle{ x + 10, py, w - 20, 18 }, ("Skeleton: " + skelName).c_str());
+	GuiGroupBox(Rectangle{ x, y, w, 78 }, "Skeleton (.chr / .bon)");
+	float py = y + 14.0f;
+	GuiLabel(Rectangle{ x + 8, py, w - 16, 18 }, ("Skeleton: " + skelName).c_str());
 	py += 18.0f;
-	GuiLabel(Rectangle{ x + 10, py, w - 20, 18 }, ("Bones: " + std::to_string(boneCount)).c_str());
-	py += 22.0f;
+	GuiLabel(Rectangle{ x + 8, py, w - 16, 18 }, ("Bones Count: " + std::to_string(boneCount)).c_str());
+	py += 20.0f;
 
-	if (GuiButton(Rectangle{ x + 10, py, (w - 26) / 2, 22 }, "#140# Load .chr"))
+	if (GuiButton(Rectangle{ x + 8, py, (w - 22) / 2, 20 }, "#140# Load .chr"))
 	{
 		OpenFileDialog(DIALOG_OPEN_SKELETON);
 	}
-	if (GuiButton(Rectangle{ x + (w - 26) / 2 + 16, py, (w - 26) / 2, 22 }, "#143# Unload"))
+	if (GuiButton(Rectangle{ x + (w - 22) / 2 + 14, py, (w - 22) / 2, 20 }, "#143# Unload"))
 	{
 		scene.UnloadSkeleton();
 		ShowStatusMessage("Unloaded skeleton.");
 	}
-	y += 98.0f;
+	y += 86.0f;
 
-	// 2. Motion Animation (.mot / .ani) Section
-	int totalFrames = scene.GetTotalFrameCount();
-	std::string motPath = scene.GetActiveMotionPath();
-	std::string motName = motPath.empty() ? (totalFrames > 0 ? "(Internal / Loaded)" : "(None)") : SceneManager::ExtractFileName(motPath);
-
-	GuiGroupBox(Rectangle{ x, y, w, 88 }, "Motion Animation (.mot / .ani)");
+	// 2. Character Animations List Box
+	const auto& anims = scene.GetAvailableAnimations();
+	std::string animTitle = "Model Animations (" + std::to_string(anims.size()) + ")";
+	float animBoxH = 160.0f;
+	GuiGroupBox(Rectangle{ x, y, w, animBoxH }, animTitle.c_str());
 	py = y + 16.0f;
-	GuiLabel(Rectangle{ x + 10, py, w - 20, 18 }, ("Motion: " + motName).c_str());
-	py += 18.0f;
-	GuiLabel(Rectangle{ x + 10, py, w - 20, 18 }, ("Keyframes: " + std::to_string(totalFrames)).c_str());
-	py += 22.0f;
 
-	if (GuiButton(Rectangle{ x + 10, py, (w - 26) / 2, 22 }, "#132# Load .mot"))
+	float animListH = animBoxH - 48.0f;
+	DrawRectangle((int)x + 6, (int)py, (int)w - 12, (int)animListH, Color{ 20, 22, 26, 255 });
+	DrawRectangleLines((int)x + 6, (int)py, (int)w - 12, (int)animListH, Color{ 48, 52, 62, 255 });
+
+	if (anims.empty())
+	{
+		GuiLabel(Rectangle{ x + 12, py + 8, w - 24, 20 }, "No animations loaded for model.");
+	}
+	else
+	{
+		float itemH = 22.0f;
+		int visibleAnimItems = (int)(animListH / itemH);
+		int maxScroll = std::max(0, (int)anims.size() - visibleAnimItems);
+
+		Vector2 mousePos = GetMousePosition();
+		if (CheckCollisionPointRec(mousePos, Rectangle{ x + 6, py, w - 12, animListH }))
+		{
+			float wheel = GetMouseWheelMove();
+			if (wheel != 0)
+			{
+				m_animListScroll -= (int)wheel * 2;
+				if (m_animListScroll < 0) m_animListScroll = 0;
+				if (m_animListScroll > maxScroll) m_animListScroll = maxScroll;
+			}
+		}
+
+		int curAnim = scene.GetCurrentAnimationIndex();
+		for (int i = 0; i < visibleAnimItems && (i + m_animListScroll) < (int)anims.size(); i++)
+		{
+			int animIdx = i + m_animListScroll;
+			const auto& item = anims[animIdx];
+			float itemY = py + i * itemH;
+
+			bool isCurrent = (animIdx == curAnim);
+			if (isCurrent)
+			{
+				DrawRectangle((int)x + 7, (int)itemY + 1, (int)w - 14, (int)itemH - 2, Color{ 45, 75, 120, 200 });
+			}
+
+			std::string label = (isCurrent ? "#214# " : "#131# ") + item.displayName;
+			if (GuiButton(Rectangle{ x + 8, itemY + 1, w - 16, itemH - 2 }, label.c_str()))
+			{
+				scene.SelectAnimation(animIdx);
+				ShowStatusMessage("Playing animation: " + item.displayName);
+			}
+		}
+	}
+
+	// Quick Load .mot button and Unload button at bottom of animation box
+	py += animListH + 4.0f;
+	if (GuiButton(Rectangle{ x + 8, py, (w - 22) / 2, 20 }, "#132# Load .mot"))
 	{
 		OpenFileDialog(DIALOG_OPEN_MOTION);
 	}
-	if (GuiButton(Rectangle{ x + (w - 26) / 2 + 16, py, (w - 26) / 2, 22 }, "#143# Unload"))
+	if (GuiButton(Rectangle{ x + (w - 22) / 2 + 14, py, (w - 22) / 2, 20 }, "#143# Unload"))
 	{
 		scene.UnloadMotion();
 		ShowStatusMessage("Unloaded active motion.");
 	}
-	y += 98.0f;
+	y += animBoxH + 10.0f;
 
 	// 3. Skeleton Bones Inspector
 	GuiLabel(Rectangle{ x, y, w, 20 }, ("Skeleton Bones (" + std::to_string(boneCount) + "):").c_str());
 	y += 22.0f;
 
 	float bonesHeight = m_rightPanelRect.height - (y - m_rightPanelRect.y) - 10.0f;
-	DrawRectangle(x, y, w, bonesHeight, Color{ 22, 24, 28, 255 });
-	DrawRectangleLines(x, y, w, bonesHeight, Color{ 48, 52, 62, 255 });
+	if (bonesHeight < 60.0f) bonesHeight = 60.0f;
+
+	DrawRectangle((int)x, (int)y, (int)w, (int)bonesHeight, Color{ 22, 24, 28, 255 });
+	DrawRectangleLines((int)x, (int)y, (int)w, (int)bonesHeight, Color{ 48, 52, 62, 255 });
 
 	if (boneCount == 0)
 	{
@@ -1096,63 +1144,101 @@ void UserInterface::_drawBottomBar(SceneManager& scene, float deltaTime)
 	float h = 28.0f;
 
 	// Rewind to first frame
-	if (GuiButton(Rectangle{ x, y, 30, h }, "#129#"))
+	if (GuiButton(Rectangle{ x, y, 28, h }, "#129#"))
 	{
 		scene.SetCurrentFrame(0.0f);
 	}
-	x += 34.0f;
+	x += 32.0f;
 
-	// Step backward
-	if (GuiButton(Rectangle{ x, y, 30, h }, "#118#"))
+	// Step backward 1 frame
+	if (GuiButton(Rectangle{ x, y, 28, h }, "#118#"))
 	{
 		scene.StepFrame(-1);
 	}
-	x += 34.0f;
+	x += 32.0f;
 
 	// Play / Pause toggle
 	bool isPlaying = scene.IsPlaying();
 	const char* playIcon = isPlaying ? "#132#" : "#131#";
-	if (GuiButton(Rectangle{ x, y, 36, h }, playIcon))
+	if (GuiButton(Rectangle{ x, y, 32, h }, playIcon))
 	{
 		scene.TogglePlay();
 	}
-	x += 40.0f;
+	x += 36.0f;
 
-	// Step forward
-	if (GuiButton(Rectangle{ x, y, 30, h }, "#119#"))
+	// Step forward 1 frame
+	if (GuiButton(Rectangle{ x, y, 28, h }, "#119#"))
 	{
 		scene.StepFrame(1);
 	}
-	x += 36.0f;
+	x += 34.0f;
+
+	// Previous & Next Animation buttons
+	const auto& anims = scene.GetAvailableAnimations();
+	if (anims.size() > 1)
+	{
+		if (GuiButton(Rectangle{ x, y, 52, h }, "#120# Prev"))
+		{
+			scene.PrevAnimation();
+			ShowStatusMessage("Selected animation: " + scene.GetCurrentAnimationDisplayName());
+		}
+		x += 56.0f;
+
+		if (GuiButton(Rectangle{ x, y, 52, h }, "Next #121#"))
+		{
+			scene.NextAnimation();
+			ShowStatusMessage("Selected animation: " + scene.GetCurrentAnimationDisplayName());
+		}
+		x += 58.0f;
+	}
 
 	// Timeline Slider
 	int totalFrames = scene.GetTotalFrameCount();
 	float currentFrame = scene.GetCurrentFrame();
 
-	float sliderWidth = m_bottomBarRect.width - 380.0f;
-	if (sliderWidth < 120.0f) sliderWidth = 120.0f;
+	float rightControlsWidth = 260.0f;
+	if (anims.size() > 1) rightControlsWidth += 40.0f;
+	float sliderWidth = m_bottomBarRect.width - (x - m_bottomBarRect.x) - rightControlsWidth;
+	if (sliderWidth < 100.0f) sliderWidth = 100.0f;
 
 	float sliderVal = currentFrame;
-	if (GuiSlider(Rectangle{ x, y + 4, sliderWidth, 20 }, "0", std::to_string(totalFrames - 1).c_str(),
-	              &sliderVal, 0.0f, (float)(totalFrames - 1)))
+	if (totalFrames > 1)
 	{
-		scene.SetCurrentFrame(sliderVal);
+		if (GuiSlider(Rectangle{ x, y + 4, sliderWidth, 20 }, "0", std::to_string(totalFrames - 1).c_str(),
+		              &sliderVal, 0.0f, (float)(totalFrames - 1)))
+		{
+			scene.SetCurrentFrame(sliderVal);
+		}
+	}
+	else
+	{
+		GuiSlider(Rectangle{ x, y + 4, sliderWidth, 20 }, "0", "0", &sliderVal, 0.0f, 0.0f);
 	}
 	x += sliderWidth + 10.0f;
 
 	// Frame counter text
-	std::string frameText = std::to_string((int)currentFrame) + " / " + std::to_string(totalFrames - 1);
-	GuiLabel(Rectangle{ x, y + 4, 70, 20 }, frameText.c_str());
-	x += 74.0f;
+	std::string frameText = std::to_string((int)currentFrame) + " / " + std::to_string(std::max(0, totalFrames - 1));
+	GuiLabel(Rectangle{ x, y + 4, 65, 20 }, frameText.c_str());
+	x += 68.0f;
+
+	// Current Animation Name badge
+	if (!anims.empty())
+	{
+		int curIdx = scene.GetCurrentAnimationIndex();
+		std::string animBadge = "[" + std::to_string(curIdx + 1) + "/" + std::to_string(anims.size()) + "] " + scene.GetCurrentAnimationDisplayName();
+		if (animBadge.length() > 18) animBadge = animBadge.substr(0, 16) + "..";
+		GuiLabel(Rectangle{ x, y + 4, 110, 20 }, animBadge.c_str());
+		x += 114.0f;
+	}
 
 	// Playback Speed Slider
 	float speed = scene.GetAnimSpeed();
-	GuiLabel(Rectangle{ x, y + 4, 40, 20 }, "Spd:");
-	if (GuiSlider(Rectangle{ x + 35, y + 4, 60, 20 }, "", "3x", &speed, 0.1f, 3.0f))
+	GuiLabel(Rectangle{ x, y + 4, 30, 20 }, "Spd:");
+	if (GuiSlider(Rectangle{ x + 30, y + 4, 45, 20 }, "", "3x", &speed, 0.1f, 3.0f))
 	{
 		scene.SetAnimSpeed(speed);
 	}
-	x += 105.0f;
+	x += 80.0f;
 
 	// Loop checkbox
 	bool loop = scene.IsLooping();

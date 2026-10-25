@@ -17,6 +17,7 @@ SceneManager::SceneManager()
 	: m_activePartIndex(0),
 	  m_activeMotionPath(""),
 	  m_activeSkeletonPath(""),
+	  m_currentAnimationIndex(-1),
 	  m_currentFrame(0.0f),
 	  m_animSpeed(1.0f),
 	  m_isPlaying(true),
@@ -105,7 +106,10 @@ bool SceneManager::LoadBaseModel(const std::string& filepath)
 		catch (...) {}
 	}
 
-	if (!m_activeMotionPath.empty())
+	// Auto-discover all available animations for this model/character
+	DiscoverAvailableAnimations(filepath);
+
+	if (!m_activeMotionPath.empty() && m_currentAnimationIndex < 0)
 		newModel->LoadMotion(m_activeMotionPath);
 
 	_rebuildBoneLinks();
@@ -152,8 +156,228 @@ bool SceneManager::LoadMotion(const std::string& filepath)
 
 	m_activeMotionPath = filepath;
 	m_currentFrame = 0.0f;
+
+	// Check if this matches an item in m_availableAnimations
+	std::string fn = ExtractFileName(filepath);
+	bool found = false;
+	for (size_t i = 0; i < m_availableAnimations.size(); i++)
+	{
+		if (m_availableAnimations[i].filepath == filepath || m_availableAnimations[i].filename == fn)
+		{
+			m_currentAnimationIndex = (int)i;
+			m_availableAnimations[i].frameCount = baseModel->GetMotion() ? baseModel->GetMotion()->GetFrameCount() : 0;
+			found = true;
+			break;
+		}
+	}
+
+	if (!found)
+	{
+		ModelAnimationItem item;
+		item.filepath = filepath;
+		item.filename = fn;
+		item.displayName = fn;
+		item.frameCount = baseModel->GetMotion() ? baseModel->GetMotion()->GetFrameCount() : 0;
+		m_availableAnimations.push_back(item);
+		m_currentAnimationIndex = (int)m_availableAnimations.size() - 1;
+	}
+
 	_rebuildBoneLinks();
 	return true;
+}
+
+void SceneManager::DiscoverAvailableAnimations(const std::string& modelFilepath)
+{
+	m_availableAnimations.clear();
+	m_currentAnimationIndex = -1;
+
+	namespace fs = std::filesystem;
+	try
+	{
+		fs::path p(modelFilepath);
+		fs::path dir = p.parent_path();
+		if (dir.empty()) dir = ".";
+
+		std::string stem = p.stem().string();
+		std::string stemLower = stem;
+		std::transform(stemLower.begin(), stemLower.end(), stemLower.begin(), ::tolower);
+
+		std::string prefix = "";
+		if (stemLower.rfind("part_m", 0) == 0 || stemLower.find("male") != std::string::npos)
+		{
+			prefix = "mvr_male";
+		}
+		else if (stemLower.rfind("part_f", 0) == 0 || stemLower.find("female") != std::string::npos)
+		{
+			prefix = "mvr_female";
+		}
+		else if (stemLower.rfind("part_", 0) == 0)
+		{
+			prefix = "mvr_male";
+		}
+		else if (stemLower.rfind("mvr_", 0) == 0)
+		{
+			prefix = stem;
+		}
+		else if (stemLower.rfind("item_", 0) == 0)
+		{
+			prefix = stem;
+		}
+		else
+		{
+			prefix = stem;
+		}
+
+		std::string prefixLower = prefix;
+		std::transform(prefixLower.begin(), prefixLower.end(), prefixLower.begin(), ::tolower);
+
+		std::vector<fs::path> matchedFiles;
+		std::vector<fs::path> otherFiles;
+
+		for (const auto& entry : fs::directory_iterator(dir, fs::directory_options::skip_permission_denied))
+		{
+			if (!entry.is_regular_file()) continue;
+
+			std::string ext = entry.path().extension().string();
+			std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+
+			if (ext == ".ani" || ext == ".mot" || ext == ".mo3")
+			{
+				std::string fn = entry.path().filename().string();
+				std::string fnLower = fn;
+				std::transform(fnLower.begin(), fnLower.end(), fnLower.begin(), ::tolower);
+
+				if (!prefixLower.empty() && (fnLower.rfind(prefixLower, 0) == 0 || fnLower.find(prefixLower) != std::string::npos))
+				{
+					matchedFiles.push_back(entry.path());
+				}
+				else
+				{
+					otherFiles.push_back(entry.path());
+				}
+			}
+		}
+
+		std::vector<fs::path>& targetList = (!matchedFiles.empty()) ? matchedFiles : otherFiles;
+
+		auto sortFunc = [](const fs::path& a, const fs::path& b) {
+			std::string sa = a.filename().string();
+			std::string sb = b.filename().string();
+			std::transform(sa.begin(), sa.end(), sa.begin(), ::tolower);
+			std::transform(sb.begin(), sb.end(), sb.begin(), ::tolower);
+			return sa < sb;
+		};
+		std::sort(targetList.begin(), targetList.end(), sortFunc);
+
+		for (const auto& fp : targetList)
+		{
+			ModelAnimationItem item;
+			item.filepath = fp.string();
+			item.filename = fp.filename().string();
+
+			std::string disp = fp.stem().string();
+			std::string dispLower = disp;
+			std::transform(dispLower.begin(), dispLower.end(), dispLower.begin(), ::tolower);
+
+			std::vector<std::string> prefixesToStrip;
+			if (!prefixLower.empty()) prefixesToStrip.push_back(prefixLower);
+			prefixesToStrip.push_back("mvr_male");
+			prefixesToStrip.push_back("mvr_female");
+			prefixesToStrip.push_back("motion");
+
+			for (const auto& p : prefixesToStrip)
+			{
+				if (dispLower.rfind(p + "_", 0) == 0)
+				{
+					disp = disp.substr(p.length() + 1);
+					break;
+				}
+				else if (dispLower.rfind(p, 0) == 0 && dispLower.length() > p.length())
+				{
+					disp = disp.substr(p.length());
+					if (!disp.empty() && disp[0] == '_') disp = disp.substr(1);
+					break;
+				}
+			}
+
+			if (disp.empty()) disp = fp.stem().string();
+			item.displayName = disp;
+			item.frameCount = 0;
+
+			m_availableAnimations.push_back(item);
+		}
+
+		// Auto-select first or matching walk/idle/stand animation
+		if (!m_availableAnimations.empty())
+		{
+			int defaultIndex = 0;
+			for (size_t i = 0; i < m_availableAnimations.size(); i++)
+			{
+				std::string dLower = m_availableAnimations[i].displayName;
+				std::transform(dLower.begin(), dLower.end(), dLower.begin(), ::tolower);
+				if (dLower.find("walk") != std::string::npos || dLower.find("idle") != std::string::npos || dLower.find("stand") != std::string::npos)
+				{
+					defaultIndex = (int)i;
+					break;
+				}
+			}
+			SelectAnimation(defaultIndex);
+		}
+	}
+	catch (...) {}
+}
+
+bool SceneManager::SelectAnimation(int index)
+{
+	if (index < 0 || index >= (int)m_availableAnimations.size())
+		return false;
+
+	m_currentAnimationIndex = index;
+	const std::string& animPath = m_availableAnimations[index].filepath;
+	return LoadMotion(animPath);
+}
+
+bool SceneManager::SelectAnimationByName(const std::string& animName)
+{
+	std::string target = animName;
+	std::transform(target.begin(), target.end(), target.begin(), ::tolower);
+
+	for (size_t i = 0; i < m_availableAnimations.size(); i++)
+	{
+		std::string fn = m_availableAnimations[i].filename;
+		std::string dn = m_availableAnimations[i].displayName;
+		std::transform(fn.begin(), fn.end(), fn.begin(), ::tolower);
+		std::transform(dn.begin(), dn.end(), dn.begin(), ::tolower);
+
+		if (fn == target || dn == target || fn.find(target) != std::string::npos)
+		{
+			return SelectAnimation((int)i);
+		}
+	}
+	return false;
+}
+
+bool SceneManager::NextAnimation()
+{
+	if (m_availableAnimations.empty()) return false;
+	int next = (m_currentAnimationIndex + 1) % (int)m_availableAnimations.size();
+	return SelectAnimation(next);
+}
+
+bool SceneManager::PrevAnimation()
+{
+	if (m_availableAnimations.empty()) return false;
+	int prev = (m_currentAnimationIndex - 1 + (int)m_availableAnimations.size()) % (int)m_availableAnimations.size();
+	return SelectAnimation(prev);
+}
+
+std::string SceneManager::GetCurrentAnimationDisplayName() const
+{
+	if (m_currentAnimationIndex >= 0 && m_currentAnimationIndex < (int)m_availableAnimations.size())
+		return m_availableAnimations[m_currentAnimationIndex].displayName;
+	if (!m_activeMotionPath.empty())
+		return ExtractFileName(m_activeMotionPath);
+	return "(None)";
 }
 
 bool SceneManager::LoadSkeleton(const std::string& filepath)
@@ -252,6 +476,8 @@ void SceneManager::ClearAll()
 		}
 	}
 	m_parts.clear();
+	m_availableAnimations.clear();
+	m_currentAnimationIndex = -1;
 	m_activePartIndex = 0;
 	m_currentFrame = 0.0f;
 }
