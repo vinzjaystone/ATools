@@ -91,15 +91,19 @@ int main(int argc, char* argv[])
 						}
 					}
 				}
-				else if (ext == ".mot")
+				else if (ext == ".mot" || ext == ".ani" || ext == ".mo3")
 				{
 					if (scene.LoadMotion(droppedPath))
 						ui.ShowStatusMessage("Loaded motion: " + SceneManager::ExtractFileName(droppedPath));
+					else
+						ui.ShowStatusMessage("Failed to load motion: " + SceneManager::ExtractFileName(droppedPath), 4.0f, true);
 				}
-				else if (ext == ".bon")
+				else if (ext == ".chr" || ext == ".bon")
 				{
 					if (scene.LoadSkeleton(droppedPath))
 						ui.ShowStatusMessage("Loaded skeleton: " + SceneManager::ExtractFileName(droppedPath));
+					else
+						ui.ShowStatusMessage("Failed to load skeleton: " + SceneManager::ExtractFileName(droppedPath), 4.0f, true);
 				}
 
 				// Update folder scanner to dropped file directory
@@ -159,6 +163,8 @@ int main(int argc, char* argv[])
 				ui.OpenFileDialog(DIALOG_APPEND_MODEL);
 			if (IsKeyPressed(KEY_M))
 				ui.OpenFileDialog(DIALOG_OPEN_MOTION);
+			if (IsKeyPressed(KEY_K))
+				ui.OpenFileDialog(DIALOG_OPEN_SKELETON);
 			if (IsKeyPressed(KEY_S))
 			{
 				CObject3D* activeModel = scene.GetActiveModel();

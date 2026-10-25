@@ -178,6 +178,7 @@ public:
 
 	MotionAttribute* GetAttributes() const { return m_attributes; }
 	CMotion* GetMotion() const { return m_motion; }
+	CSkeleton* GetSkeleton() const { return m_skeleton; }
 	D3DXMATRIX* GetBaseBones() const { return m_baseBones; }
 	D3DXMATRIX* GetBaseInvBones() const { return m_baseInvBones; }
 	D3DXMATRIX* GetEffectiveBones() const { return m_baseBones ? m_baseBones : m_externBones; }
@@ -196,6 +197,7 @@ public:
 	bool LoadMotion(const std::string& filename);
 	bool LoadSkeleton(const std::string& filename);
 	void UnloadMotion();
+	void UnloadSkeleton();
 
 	void Animate(float currentFrame, int nextFrame, int lod = 0);
 	void LoadTextures(const std::string& modelPath);
@@ -229,6 +231,7 @@ private:
 	D3DXMATRIX* m_externInvBones;
 	bool m_sendVS;
 	CMotion* m_motion;
+	CSkeleton* m_skeleton;
 	bool m_hasSkin;
 };
 

@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include <filesystem>
 
 std::string SceneManager::ExtractFileName(const std::string& path)
 {
@@ -53,7 +54,56 @@ bool SceneManager::LoadBaseModel(const std::string& filepath)
 	m_currentFrame = 0.0f;
 
 	if (!m_activeSkeletonPath.empty())
+	{
 		newModel->LoadSkeleton(m_activeSkeletonPath);
+	}
+	else if (newModel->GetBoneCount() == 0)
+	{
+		// Auto-resolve character skeleton (.chr / .bon) if present in model directory
+		namespace fs = std::filesystem;
+		try
+		{
+			fs::path p(filepath);
+			fs::path dir = p.parent_path();
+			if (dir.empty()) dir = ".";
+
+			std::string stem = p.stem().string();
+			std::string stemLower = stem;
+			std::transform(stemLower.begin(), stemLower.end(), stemLower.begin(), ::tolower);
+
+			std::vector<std::string> candidates;
+			candidates.push_back((dir / (stem + ".chr")).string());
+			candidates.push_back((dir / (stem + ".bon")).string());
+
+			if (stemLower.rfind("part_m", 0) == 0 || stemLower.find("male") != std::string::npos)
+			{
+				candidates.push_back((dir / "mvr_male.chr").string());
+				candidates.push_back((dir / "mvr_male.bon").string());
+			}
+			else if (stemLower.rfind("part_f", 0) == 0 || stemLower.find("female") != std::string::npos)
+			{
+				candidates.push_back((dir / "mvr_female.chr").string());
+				candidates.push_back((dir / "mvr_female.bon").string());
+			}
+			else if (stemLower.rfind("mvr_", 0) == 0)
+			{
+				candidates.push_back((dir / (stem + ".chr")).string());
+			}
+
+			for (const auto& cand : candidates)
+			{
+				if (fs::exists(cand))
+				{
+					if (newModel->LoadSkeleton(cand))
+					{
+						m_activeSkeletonPath = cand;
+						break;
+					}
+				}
+			}
+		}
+		catch (...) {}
+	}
 
 	if (!m_activeMotionPath.empty())
 		newModel->LoadMotion(m_activeMotionPath);
@@ -132,6 +182,17 @@ void SceneManager::UnloadMotion()
 		baseModel->UnloadMotion();
 	}
 	m_currentFrame = 0.0f;
+}
+
+void SceneManager::UnloadSkeleton()
+{
+	m_activeSkeletonPath = "";
+	CObject3D* baseModel = GetBaseModel();
+	if (baseModel)
+	{
+		baseModel->UnloadSkeleton();
+	}
+	_rebuildBoneLinks();
 }
 
 void SceneManager::RemovePart(int index)

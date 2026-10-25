@@ -202,10 +202,12 @@ void SceneRenderer::DrawBones(const CObject3D* model)
 	rlEnd();
 
 	// Draw Bone Hierarchy Connections
+	const CSkeleton* skl = model->GetSkeleton();
 	const CMotion* mot = model->GetMotion();
-	if (mot && mot->GetBones())
+	const Bone* boneList = (skl && skl->GetBones()) ? skl->GetBones() : (mot ? mot->GetBones() : nullptr);
+
+	if (boneList)
 	{
-		const Bone* boneList = mot->GetBones();
 		rlBegin(RL_LINES);
 		rlColor4ub(255, 255, 100, 220);
 

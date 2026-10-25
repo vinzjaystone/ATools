@@ -1,6 +1,6 @@
 # Flyff O3D Model Viewer & Composite Editor (Linux / raylib)
 
-A high-performance, standalone 3D model viewer, animation player, and composite character editor for **Flyff (Fly For Fun) `.o3d`** models and **`.mot`** motions on Linux.
+A high-performance, standalone 3D model viewer, animation player, and composite character editor for **Flyff (Fly For Fun) `.o3d`** models, **`.chr` / `.bon`** character skeletons, and **`.mot` / `.ani`** motions on Linux.
 
 Powered by **raylib** and **raygui**, completely free of Qt and Direct3D 9 dependencies.
 
@@ -9,13 +9,14 @@ Powered by **raylib** and **raygui**, completely free of Qt and Direct3D 9 depen
 ## Features
 
 ### 1. Folder Scanner & Model Library Browser
-- **Folder Scanner**: Point to any folder (or current directory) and instantly scan for all `.o3d` models, `.mot` animations, and `.bon` skeletons.
+- **Folder Scanner**: Point to any folder (or current directory) and instantly scan for all `.o3d` models, `.mot` / `.ani` animations, and `.chr` / `.bon` skeletons.
 - **Subfolder Search**: Toggle recursive folder scanning to discover assets across nested game directories (e.g., `Model/`, `Item/`, `Ctrl/`).
 - **Live Search & Filter**: Real-time keyword filter to quickly find specific models (e.g., `head`, `hair`, `hat`, `sword`, `mvr_`).
 - **One-Click Loading & Dual Modes**:
   - **Replace Mode**: Click any `.o3d` model to load and display it as the primary base model.
   - **Append Mode**: Click any `.o3d` model (or click the `+` button) to append it to the current scene without replacing existing models!
-  - **Motion Library**: Click any `.mot` file to immediately apply the animation to the loaded models.
+  - **Motion Library**: Click any `.mot` or `.ani` file to immediately apply the animation to the loaded models.
+  - **Skeleton Library**: Click any `.chr` or `.bon` file to load or bind a character skeleton.
 
 ### 2. Multi-Part Composite Character & Scene Manager
 - **Assemble Composite Models**: Load a base body (e.g., character or monster) and append additional `.o3d` parts:
@@ -23,6 +24,7 @@ Powered by **raylib** and **raygui**, completely free of Qt and Direct3D 9 depen
   - Upper / Lower Armor, Gloves, Boots
   - Weapons (Swords, Shields, Bows, Wands)
   - Cloaks, Wings, and Accessories
+- **Auto-Skeleton Resolution**: Automatically detects and attaches the corresponding character skeleton (`mvr_male.chr`, `mvr_female.chr`, or `<name>.chr`) when loading character body parts.
 - **Parts Manager Panel**:
   - Per-part **Visibility toggle** (`[x]`).
   - Active part selection for individual material and submesh editing.
@@ -31,7 +33,7 @@ Powered by **raylib** and **raygui**, completely free of Qt and Direct3D 9 depen
   - Individual part removal (`X`) and `Clear Appended Parts`.
 - **Combined Auto-Framing**: Frame Camera (`F`) automatically calculates the bounding box of all visible parts combined.
 
-### 3. Motion & Animation Player (`.mot` & `.bon`)
+### 3. Motion & Animation Player (`.mot`, `.ani`, `.chr`, `.bon`)
 - **Animation Controls**:
   - Play / Pause toggle (`Space`).
   - Frame Step buttons (`<` and `>` arrow keys).
@@ -62,7 +64,7 @@ Powered by **raylib** and **raygui**, completely free of Qt and Direct3D 9 depen
   - UV Scrolling animation parameters ($U, V$ speeds).
   - Material Effect Blocks (Additive glow, opacity, blending).
 - **100% Byte-Accurate Binary Serialization**:
-  - Full load and save compatibility preserving the original Flyff `.o3d` format specifications (v17–v23).
+  - Full load and save compatibility preserving the original Flyff `.o3d`, `.chr`, `.bon`, and `.mot` format specifications.
 
 ---
 
@@ -81,7 +83,7 @@ ATools/
 │   │   └── D3DXMath.h/.cpp# Complete D3D9 vector/matrix/quaternion math library
 │   ├── model/             # Flyff 3D model, composite scene, motion, and textures
 │   │   ├── Object3D.h/.cpp# Flyff .o3d mesh format parser and serializer
-│   │   ├── Motion.h/.cpp  # Skeleton and bone animation parser (.mot / .bon)
+│   │   ├── Motion.h/.cpp  # Skeleton and bone animation parser (.chr / .bon / .mot / .ani)
 │   │   ├── SceneManager.h/.cpp # Multi-part composite character & scene manager
 │   │   ├── FolderScanner.h/.cpp# Directory scanner and file filter
 │   │   ├── TextureMng.h/.cpp   # Raylib Texture2D resource caching
@@ -94,6 +96,8 @@ ATools/
 │   └── main.cpp           # Application entry point and interactive main loop
 ├── samples/               # Sample models and animations for testing
 │   ├── model_body.o3d     # Base torso model
+│   ├── model_body.chr     # Skeleton definition
+│   ├── mvr_male.chr       # Character skeleton file
 │   ├── model_head.o3d     # Head part model
 │   ├── part_hat.o3d       # Hat accessory model
 │   ├── wea_sword.o3d      # Sword weapon model
@@ -109,7 +113,7 @@ ATools/
 
 ### Prerequisites
 - GCC / G++ (supporting C++17)
-- Standard system runtime libraries: `libm`, `libpthread`, `libdl`, `librt`
+- Standard system runtime libraries: `libm`, `libpthread`, `libdl`, `librt`, `libX11`
 
 ### Building with `make` (Recommended)
 ```bash
@@ -136,7 +140,7 @@ Or open a model directly from the command line:
 ```
 
 ### Drag & Drop Support
-You can drag and drop `.o3d` models, `.mot` animations, or `.bon` skeletons directly onto the application window from your file manager!
+You can drag and drop `.o3d` models, `.mot` / `.ani` animations, or `.chr` / `.bon` skeletons directly onto the application window from your file manager!
 
 ---
 
@@ -153,9 +157,10 @@ You can drag and drop `.o3d` models, `.mot` animations, or `.bon` skeletons dire
 ### Keyboard Shortcuts
 | Key | Action |
 |---|---|
-| `Ctrl + O` | Open Model Dialog |
+| `Ctrl + O` | Open Model (`.o3d`) Dialog |
 | `Ctrl + Shift + A` | Append Model to Scene Dialog |
-| `Ctrl + M` | Load Motion (`.mot`) Dialog |
+| `Ctrl + M` | Load Motion (`.mot` / `.ani`) Dialog |
+| `Ctrl + K` | Load Skeleton (`.chr` / `.bon`) Dialog |
 | `Ctrl + S` | Save Active Model (`.o3d`) |
 | `Space` | Play / Pause Animation |
 | `Left / Right` | Step Animation 1 Frame Backward / Forward |
