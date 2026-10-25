@@ -16,6 +16,33 @@ namespace fs = std::filesystem;
 
 int main(int argc, char* argv[])
 {
+	// Check for CLI headless export mode
+	for (int i = 1; i < argc; i++)
+	{
+		std::string arg = argv[i];
+		if ((arg == "--export-glb" || arg == "--export-gltf" || arg == "-e") && (i + 2 < argc))
+		{
+			std::string inPath = argv[i + 1];
+			std::string outPath = argv[i + 2];
+			SceneManager exportScene;
+			if (!exportScene.LoadBaseModel(inPath))
+			{
+				std::cerr << "Error: Failed to load model for export: " << inPath << std::endl;
+				return 1;
+			}
+			if (exportScene.ExportToGLTF(outPath, true))
+			{
+				std::cout << "Successfully exported " << inPath << " to " << outPath << std::endl;
+				return 0;
+			}
+			else
+			{
+				std::cerr << "Error: Failed to export model to: " << outPath << std::endl;
+				return 1;
+			}
+		}
+	}
+
 	// Configure Window flags
 	SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT);
 	InitWindow(1360, 840, "Flyff .o3d Model Viewer & Composite Editor");
@@ -179,6 +206,8 @@ int main(int argc, char* argv[])
 			}
 			if (IsKeyPressed(KEY_O))
 				ui.OpenFileDialog(DIALOG_OPEN_MODEL);
+			if (IsKeyPressed(KEY_E))
+				ui.OpenFileDialog(DIALOG_EXPORT_GLTF);
 			if (IsKeyPressed(KEY_A) && shiftDown)
 				ui.OpenFileDialog(DIALOG_APPEND_MODEL);
 			if (IsKeyPressed(KEY_M))
