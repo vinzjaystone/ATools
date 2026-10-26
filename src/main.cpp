@@ -41,6 +41,27 @@ int main(int argc, char* argv[])
 				return 1;
 			}
 		}
+		if ((arg == "--export-dae" || arg == "-d") && (i + 2 < argc))
+		{
+			std::string inPath = argv[i + 1];
+			std::string outPath = argv[i + 2];
+			SceneManager exportScene;
+			if (!exportScene.LoadBaseModel(inPath))
+			{
+				std::cerr << "Error: Failed to load model for export: " << inPath << std::endl;
+				return 1;
+			}
+			if (exportScene.ExportToDAE(outPath, true))
+			{
+				std::cout << "Successfully exported " << inPath << " to " << outPath << std::endl;
+				return 0;
+			}
+			else
+			{
+				std::cerr << "Error: Failed to export model to: " << outPath << std::endl;
+				return 1;
+			}
+		}
 	}
 
 	// Configure Window flags
@@ -208,6 +229,8 @@ int main(int argc, char* argv[])
 				ui.OpenFileDialog(DIALOG_OPEN_MODEL);
 			if (IsKeyPressed(KEY_E))
 				ui.OpenFileDialog(DIALOG_EXPORT_GLTF);
+			if (IsKeyPressed(KEY_D))
+				ui.OpenFileDialog(DIALOG_EXPORT_DAE);
 			if (IsKeyPressed(KEY_A) && shiftDown)
 				ui.OpenFileDialog(DIALOG_APPEND_MODEL);
 			if (IsKeyPressed(KEY_M))

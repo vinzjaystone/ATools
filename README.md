@@ -55,14 +55,18 @@ Powered by **raylib** and **raygui**, completely free of Qt and Direct3D 9 depen
   - Exports **all discovered animations** as named glTF animation tracks with linear quaternion and translation keyframing.
   - Embeds standard PBR materials and PNG textures directly inside the single `.glb` file.
   - Accessible via Top Bar (`#07# Export glTF`), Keyboard Shortcut (`Ctrl + E`), or CLI (`./model_viewer --export-glb <in.o3d> <out.glb>`).
-  - Playback Speed Slider ($0.1\times \dots 3.0\times$).
-  - Loop toggle (Loop playback vs Single pass).
-  - Keyframe counter display: `Frame: X / Total: Y`.
-- **Synchronized Skeletal Skinning**:
-  - Appended parts automatically inherit the animated skeleton in real time, moving together seamlessly in sync with the motion.
-- **Skeleton Bones Inspector**: Browse all skeleton joints with IDs, parent linkages, and joint names (e.g., `Bip01 Pelvis`, `Bip01 Spine`, `Bip01 Head`, `RH`, `LH`).
 
-### 4. 3D Viewport & Rendering Pipeline
+### 5. COLLADA (.dae) 3D Export
+- **Standard COLLADA 1.4.1 Schema**:
+  - Export models and character assemblies to **`.dae`** format with full hierarchy, materials, skin controllers, and animation tracks.
+  - Direct compatibility with **Blender**, **3ds Max**, **Maya**, **Godot**, **Assimp**, and 3D pipelines.
+- **Includes Geometry, Rigging & Motion Clips**:
+  - Exports submesh geometries with position, normal, and UV streams.
+  - Exports `<library_controllers>` skins with inverse bind matrices and per-vertex bone weights.
+  - Exports `<library_animations>` matrix transformation tracks for all loaded motions.
+  - Accessible via Top Bar (`#08# Export DAE`), Keyboard Shortcut (`Ctrl + D`), or CLI (`./model_viewer --export-dae <in.o3d> <out.dae>`).
+
+### 6. 3D Viewport & Rendering Pipeline
 - **Interactive Orbit Camera**: Orbit (Right-click drag), Pan (Middle-click drag or Shift + Right-click drag), Zoom (Mouse wheel), Smooth auto-framing (`F`).
 - **Render Modes & Overlays**:
   - Textured rendering with alpha blending and dynamic lighting.
@@ -72,7 +76,7 @@ Powered by **raylib** and **raygui**, completely free of Qt and Direct3D 9 depen
   - Coordinate axes (X = Red, Y = Green, Z = Blue) (`A`) and ground reference grid (`G`).
   - Viewport background color toggle button.
 
-### 5. Model & Material Property Inspector
+### 7. Model & Material Property Inspector
 - **Submesh & Material Editor**:
   - Ambient, Diffuse, Specular RGBA color pickers.
   - Texture filename text edit and reload.
@@ -179,6 +183,7 @@ You can drag and drop `.o3d` models, `.mot` / `.ani` animations, or `.chr` / `.b
 | `Ctrl + K` | Load Skeleton (`.chr` / `.bon`) Dialog |
 | `Ctrl + S` | Save Active Model (`.o3d`) |
 | `Ctrl + E` | Export to glTF 2.0 / GLB (`.glb`) |
+| `Ctrl + D` | Export to COLLADA DAE (`.dae`) |
 | `[` / `]` | Previous / Next Model Animation |
 | `Ctrl + Left / Right` | Previous / Next Model Animation |
 | `Space` | Play / Pause Animation |

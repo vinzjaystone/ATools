@@ -145,6 +145,10 @@ void UserInterface::OpenFileDialog(EFileDialogTarget target)
 	{
 		m_fileDialog.selectedFile = "model_export.glb";
 	}
+	else if (target == DIALOG_EXPORT_DAE)
+	{
+		m_fileDialog.selectedFile = "model_export.dae";
+	}
 
 	if (m_fileDialog.currentPath.empty())
 		m_fileDialog.currentPath = "./";
@@ -185,6 +189,8 @@ void UserInterface::_refreshDirectoryContents()
 					accept = (ext == ".chr" || ext == ".bon");
 				else if (m_fileDialog.target == DIALOG_EXPORT_GLTF)
 					accept = (ext == ".glb" || ext == ".gltf");
+				else if (m_fileDialog.target == DIALOG_EXPORT_DAE)
+					accept = (ext == ".dae");
 				else if (m_fileDialog.target == DIALOG_SELECT_FOLDER)
 					accept = false;
 
@@ -332,6 +338,15 @@ void UserInterface::_drawTopBar(SceneManager& scene, OrbitCamera& camera, Render
 			ShowStatusMessage("No model loaded to export.", 3.0f, true);
 	}
 	x += 98.0f;
+
+	if (GuiButton(Rectangle{ x, y, 88, btnHeight }, "#08# Export DAE"))
+	{
+		if (scene.GetBaseModel())
+			OpenFileDialog(DIALOG_EXPORT_DAE);
+		else
+			ShowStatusMessage("No model loaded to export.", 3.0f, true);
+	}
+	x += 94.0f;
 
 	// Separator
 	DrawLine((int)x + 4, 8, (int)x + 4, 36, Color{ 60, 65, 78, 255 });
@@ -1424,6 +1439,7 @@ void UserInterface::_drawFileDialog(SceneManager& scene, OrbitCamera& camera)
 	else if (m_fileDialog.target == DIALOG_OPEN_SKELETON) title = "Load Skeleton (.bon)";
 	else if (m_fileDialog.target == DIALOG_SELECT_FOLDER) title = "Select Directory to Scan";
 	else if (m_fileDialog.target == DIALOG_EXPORT_GLTF) title = "Export to glTF 2.0 / GLB (.glb)";
+	else if (m_fileDialog.target == DIALOG_EXPORT_DAE) title = "Export to COLLADA (.dae)";
 
 	DrawRectangle(boxX, boxY, boxW, 30, Color{ 40, 45, 58, 255 });
 	DrawText(title, boxX + 12, boxY + 8, 12, Color{ 230, 235, 245, 255 });
@@ -1523,7 +1539,7 @@ void UserInterface::_drawFileDialog(SceneManager& scene, OrbitCamera& camera)
 	}
 
 	// OK / Select Button
-	const char* okLabel = (m_fileDialog.target == DIALOG_SAVE_MODEL) ? "Save" : ((m_fileDialog.target == DIALOG_EXPORT_GLTF) ? "Export" : "Select");
+	const char* okLabel = (m_fileDialog.target == DIALOG_SAVE_MODEL) ? "Save" : ((m_fileDialog.target == DIALOG_EXPORT_GLTF || m_fileDialog.target == DIALOG_EXPORT_DAE) ? "Export" : "Select");
 	if (GuiButton(Rectangle{ px + pw - 150, py, 70, 24 }, okLabel))
 	{
 		std::string finalPath;
@@ -1593,6 +1609,18 @@ void UserInterface::_drawFileDialog(SceneManager& scene, OrbitCamera& camera)
 					ShowStatusMessage("Exported glTF 2.0: " + SceneManager::ExtractFileName(glbPath));
 				else
 					ShowStatusMessage("Failed to export glTF: " + SceneManager::ExtractFileName(glbPath), 4.0f, true);
+			}
+			else if (m_fileDialog.target == DIALOG_EXPORT_DAE)
+			{
+				std::string daePath = finalPath;
+				if (daePath.length() < 4 || daePath.substr(daePath.length() - 4) != ".dae")
+				{
+					daePath += ".dae";
+				}
+				if (scene.ExportToDAE(daePath, true))
+					ShowStatusMessage("Exported COLLADA DAE: " + SceneManager::ExtractFileName(daePath));
+				else
+					ShowStatusMessage("Failed to export DAE: " + SceneManager::ExtractFileName(daePath), 4.0f, true);
 			}
 		}
 
