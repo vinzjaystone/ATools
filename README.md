@@ -45,28 +45,30 @@ Powered by **raylib** and **raygui**, completely free of Qt and Direct3D 9 depen
   - **Interactive Timeline Scrubber**: Drag slider to scrub across keyframes with real-time model and bone posing!
   - **Playback Speed & Loop Control**: Adjust playback speed from `0.1x` to `3.0x` and toggle animation looping (`Loop` vs `Once`).
 
-### 4. glTF 2.0 / GLB 3D Export
-- **One-Click glTF 2.0 / GLB Export**:
-  - Export loaded models and composite character assemblies to standard, self-contained **`.glb`** / **`.gltf`** files.
-  - Compatible with **Blender**, **Godot**, **Unity**, **Unreal Engine**, **Three.js**, **Windows 3D Viewer**, and web model viewers.
-- **Includes All Geometry, Skeleton & Animations**:
-  - Exports vertex positions, normals, UV texture coordinates, joint indices (`JOINTS_0`), and skin weights (`WEIGHTS_0`).
-  - Exports full bone armature hierarchy with inverse bind matrices.
-  - Exports **all discovered animations** as named glTF animation tracks with linear quaternion and translation keyframing.
-  - Embeds standard PBR materials and PNG textures directly inside the single `.glb` file.
-  - Accessible via Top Bar (`#07# Export glTF`), Keyboard Shortcut (`Ctrl + E`), or CLI (`./model_viewer --export-glb <in.o3d> <out.glb>`).
+### 4. Universal 3D Export Suite (glTF / COLLADA / FBX)
+- **Unified Top Bar Export Dropdown Menu**:
+  - Convenient **`[#07# Export ▼]`** menu on the top navigation bar consolidating all 3D export options.
+  - Quick keyboard shortcuts for each format: `Ctrl + E` (glTF/GLB), `Ctrl + D` (COLLADA DAE), and `Ctrl + X` (Autodesk FBX).
+  - Headless CLI export support for batch automation.
 
-### 5. COLLADA (.dae) 3D Export
-- **Standard COLLADA 1.4.1 Schema**:
-  - Export models and character assemblies to **`.dae`** format with full hierarchy, materials, skin controllers, and animation tracks.
-  - Direct compatibility with **Blender**, **3ds Max**, **Maya**, **Godot**, **Assimp**, and 3D pipelines.
-- **Includes Geometry, Rigging & Motion Clips**:
-  - Exports submesh geometries with position, normal, and UV streams.
-  - Exports `<library_controllers>` skins with inverse bind matrices and per-vertex bone weights.
-  - Exports `<library_animations>` matrix transformation tracks for all loaded motions.
-  - Accessible via Top Bar (`#08# Export DAE`), Keyboard Shortcut (`Ctrl + D`), or CLI (`./model_viewer --export-dae <in.o3d> <out.dae>`).
+- **glTF 2.0 / GLB Export (`.glb` / `.gltf`)**:
+  - Export loaded models and composite character assemblies to self-contained binary **`.glb`** files.
+  - Embeds vertex positions, normals, UVs, joint indices (`JOINTS_0`), skin weights (`WEIGHTS_0`), bone armature hierarchy with inverse bind matrices, and all discovered animation tracks.
+  - Compatible with **Blender**, **Godot**, **Unity**, **Unreal Engine**, **Three.js**, **Babylon.js**, and **Windows 3D Viewer**.
+  - CLI: `./model_viewer --export-glb <in.o3d> <out.glb>`
 
-### 6. 3D Viewport & Rendering Pipeline
+- **COLLADA 1.4.1 Export (`.dae`)**:
+  - Export to standard COLLADA XML schema with full visual scene node hierarchy, phong materials, skin controllers, and animation clips.
+  - Direct compatibility with **Blender**, **3ds Max**, **Maya**, **Godot**, **Assimp**, and legacy game engines.
+  - CLI: `./model_viewer --export-dae <in.o3d> <out.dae>`
+
+- **Autodesk FBX 7.4.0 Export (`.fbx`)**:
+  - Export standard Autodesk FBX format with polygon submeshes, materials, texture linkages, skeletal deformers & skin clusters, and multiple animation stacks.
+  - Full support for translation and Euler XYZ rotation animation curves for all bones across all motion clips.
+  - Compatible with **Autodesk 3ds Max**, **Maya**, **MotionBuilder**, **Blender**, **Unity**, **Unreal Engine**, **Cinema 4D**, and **Godot**.
+  - CLI: `./model_viewer --export-fbx <in.o3d> <out.fbx>`
+
+### 5. 3D Viewport & Rendering Pipeline
 - **Interactive Orbit Camera**: Orbit (Right-click drag), Pan (Middle-click drag or Shift + Right-click drag), Zoom (Mouse wheel), Smooth auto-framing (`F`).
 - **Render Modes & Overlays**:
   - Textured rendering with alpha blending and dynamic lighting.
@@ -76,7 +78,7 @@ Powered by **raylib** and **raygui**, completely free of Qt and Direct3D 9 depen
   - Coordinate axes (X = Red, Y = Green, Z = Blue) (`A`) and ground reference grid (`G`).
   - Viewport background color toggle button.
 
-### 7. Model & Material Property Inspector
+### 6. Model & Material Property Inspector
 - **Submesh & Material Editor**:
   - Ambient, Diffuse, Specular RGBA color pickers.
   - Texture filename text edit and reload.
@@ -159,6 +161,19 @@ Or open a model directly from the command line:
 ./model_viewer samples/model_body.o3d
 ```
 
+### Headless CLI Batch Export
+Export Flyff models and animations to modern 3D formats directly from the terminal without opening a GUI:
+```bash
+# Export to glTF 2.0 / GLB
+./model_viewer --export-glb samples/model_body.o3d output_character.glb
+
+# Export to COLLADA 1.4.1 DAE
+./model_viewer --export-dae samples/model_body.o3d output_character.dae
+
+# Export to Autodesk FBX 7.4
+./model_viewer --export-fbx samples/model_body.o3d output_character.fbx
+```
+
 ### Drag & Drop Support
 You can drag and drop `.o3d` models, `.mot` / `.ani` animations, or `.chr` / `.bon` skeletons directly onto the application window from your file manager!
 
@@ -184,6 +199,7 @@ You can drag and drop `.o3d` models, `.mot` / `.ani` animations, or `.chr` / `.b
 | `Ctrl + S` | Save Active Model (`.o3d`) |
 | `Ctrl + E` | Export to glTF 2.0 / GLB (`.glb`) |
 | `Ctrl + D` | Export to COLLADA DAE (`.dae`) |
+| `Ctrl + X` | Export to Autodesk FBX (`.fbx`) |
 | `[` / `]` | Previous / Next Model Animation |
 | `Ctrl + Left / Right` | Previous / Next Model Animation |
 | `Space` | Play / Pause Animation |

@@ -24,7 +24,9 @@ UserInterface::UserInterface()
 	  m_hierarchyScroll(0),
 	  m_bonesScroll(0),
 	  m_animListScroll(0),
-	  m_editingTexture(false)
+	  m_editingTexture(false),
+	  m_exportMenuOpen(false),
+	  m_exportMenuRect{ 0, 0, 0, 0 }
 {
 	std::memset(m_searchBuffer, 0, sizeof(m_searchBuffer));
 	std::memset(m_texNameBuffer, 0, sizeof(m_texNameBuffer));
@@ -149,6 +151,10 @@ void UserInterface::OpenFileDialog(EFileDialogTarget target)
 	{
 		m_fileDialog.selectedFile = "model_export.dae";
 	}
+	else if (target == DIALOG_EXPORT_FBX)
+	{
+		m_fileDialog.selectedFile = "model_export.fbx";
+	}
 
 	if (m_fileDialog.currentPath.empty())
 		m_fileDialog.currentPath = "./";
@@ -191,6 +197,8 @@ void UserInterface::_refreshDirectoryContents()
 					accept = (ext == ".glb" || ext == ".gltf");
 				else if (m_fileDialog.target == DIALOG_EXPORT_DAE)
 					accept = (ext == ".dae");
+				else if (m_fileDialog.target == DIALOG_EXPORT_FBX)
+					accept = (ext == ".fbx");
 				else if (m_fileDialog.target == DIALOG_SELECT_FOLDER)
 					accept = false;
 
@@ -262,6 +270,10 @@ void UserInterface::UpdateAndDraw(SceneManager& scene, OrbitCamera& camera,
 	// 6. Draw Modal File Dialog (if open)
 	if (m_fileDialog.active)
 		_drawFileDialog(scene, camera);
+
+	// 7. Draw Export Dropdown Menu (if open and no modal dialog)
+	if (m_exportMenuOpen && !m_fileDialog.active)
+		_drawExportMenu(scene);
 }
 
 void UserInterface::_drawTopBar(SceneManager& scene, OrbitCamera& camera, RenderSettings& settings)
@@ -330,23 +342,13 @@ void UserInterface::_drawTopBar(SceneManager& scene, OrbitCamera& camera, Render
 	}
 	x += 86.0f;
 
-	if (GuiButton(Rectangle{ x, y, 92, btnHeight }, "#07# Export glTF"))
+	// Export Dropdown Menu Button
+	if (GuiButton(Rectangle{ x, y, 98, btnHeight }, m_exportMenuOpen ? "#07# Export #120#" : "#07# Export #121#"))
 	{
-		if (scene.GetBaseModel())
-			OpenFileDialog(DIALOG_EXPORT_GLTF);
-		else
-			ShowStatusMessage("No model loaded to export.", 3.0f, true);
+		m_exportMenuOpen = !m_exportMenuOpen;
 	}
-	x += 98.0f;
-
-	if (GuiButton(Rectangle{ x, y, 88, btnHeight }, "#08# Export DAE"))
-	{
-		if (scene.GetBaseModel())
-			OpenFileDialog(DIALOG_EXPORT_DAE);
-		else
-			ShowStatusMessage("No model loaded to export.", 3.0f, true);
-	}
-	x += 94.0f;
+	m_exportMenuRect = Rectangle{ x, y + btnHeight + 2.0f, 185.0f, 96.0f };
+	x += 104.0f;
 
 	// Separator
 	DrawLine((int)x + 4, 8, (int)x + 4, 36, Color{ 60, 65, 78, 255 });
@@ -412,6 +414,72 @@ void UserInterface::_drawTopBar(SceneManager& scene, OrbitCamera& camera, Render
 			settings.backgroundColor = Color{ 40, 60, 90, 255 }; // Blueish
 		else
 			settings.backgroundColor = Color{ 45, 48, 55, 255 }; // Default
+	}
+}
+
+void UserInterface::_drawExportMenu(SceneManager& scene)
+{
+	float mx = m_exportMenuRect.x;
+	float my = m_exportMenuRect.y;
+	float mw = m_exportMenuRect.width;
+	float mh = m_exportMenuRect.height;
+
+	// Close dropdown when clicked outside
+	if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT))
+	{
+		Vector2 mousePos = GetMousePosition();
+		Rectangle triggerRec{ mx, my - 32.0f, 98.0f, 28.0f };
+		if (!CheckCollisionPointRec(mousePos, m_exportMenuRect) && !CheckCollisionPointRec(mousePos, triggerRec))
+		{
+			m_exportMenuOpen = false;
+			return;
+		}
+	}
+
+	// Drop shadow
+	DrawRectangle((int)mx + 3, (int)my + 3, (int)mw, (int)mh, Color{ 0, 0, 0, 120 });
+
+	// Menu box background
+	DrawRectangleRec(m_exportMenuRect, Color{ 30, 33, 42, 255 });
+	DrawRectangleLines((int)mx, (int)my, (int)mw, (int)mh, Color{ 60, 70, 90, 255 });
+
+	float itemX = mx + 4.0f;
+	float itemY = my + 4.0f;
+	float itemW = mw - 8.0f;
+	float itemH = 26.0f;
+
+	bool hasModel = (scene.GetBaseModel() != nullptr);
+
+	// 1. glTF 2.0 / GLB
+	if (GuiButton(Rectangle{ itemX, itemY, itemW, itemH }, "#07# glTF 2.0 / GLB (.glb)"))
+	{
+		m_exportMenuOpen = false;
+		if (hasModel)
+			OpenFileDialog(DIALOG_EXPORT_GLTF);
+		else
+			ShowStatusMessage("No model loaded to export.", 3.0f, true);
+	}
+	itemY += itemH + 4.0f;
+
+	// 2. COLLADA (.dae)
+	if (GuiButton(Rectangle{ itemX, itemY, itemW, itemH }, "#08# COLLADA (.dae)"))
+	{
+		m_exportMenuOpen = false;
+		if (hasModel)
+			OpenFileDialog(DIALOG_EXPORT_DAE);
+		else
+			ShowStatusMessage("No model loaded to export.", 3.0f, true);
+	}
+	itemY += itemH + 4.0f;
+
+	// 3. Autodesk FBX (.fbx)
+	if (GuiButton(Rectangle{ itemX, itemY, itemW, itemH }, "#09# Autodesk FBX (.fbx)"))
+	{
+		m_exportMenuOpen = false;
+		if (hasModel)
+			OpenFileDialog(DIALOG_EXPORT_FBX);
+		else
+			ShowStatusMessage("No model loaded to export.", 3.0f, true);
 	}
 }
 
@@ -1440,6 +1508,7 @@ void UserInterface::_drawFileDialog(SceneManager& scene, OrbitCamera& camera)
 	else if (m_fileDialog.target == DIALOG_SELECT_FOLDER) title = "Select Directory to Scan";
 	else if (m_fileDialog.target == DIALOG_EXPORT_GLTF) title = "Export to glTF 2.0 / GLB (.glb)";
 	else if (m_fileDialog.target == DIALOG_EXPORT_DAE) title = "Export to COLLADA (.dae)";
+	else if (m_fileDialog.target == DIALOG_EXPORT_FBX) title = "Export to Autodesk FBX (.fbx)";
 
 	DrawRectangle(boxX, boxY, boxW, 30, Color{ 40, 45, 58, 255 });
 	DrawText(title, boxX + 12, boxY + 8, 12, Color{ 230, 235, 245, 255 });
@@ -1539,7 +1608,7 @@ void UserInterface::_drawFileDialog(SceneManager& scene, OrbitCamera& camera)
 	}
 
 	// OK / Select Button
-	const char* okLabel = (m_fileDialog.target == DIALOG_SAVE_MODEL) ? "Save" : ((m_fileDialog.target == DIALOG_EXPORT_GLTF || m_fileDialog.target == DIALOG_EXPORT_DAE) ? "Export" : "Select");
+	const char* okLabel = (m_fileDialog.target == DIALOG_SAVE_MODEL) ? "Save" : ((m_fileDialog.target == DIALOG_EXPORT_GLTF || m_fileDialog.target == DIALOG_EXPORT_DAE || m_fileDialog.target == DIALOG_EXPORT_FBX) ? "Export" : "Select");
 	if (GuiButton(Rectangle{ px + pw - 150, py, 70, 24 }, okLabel))
 	{
 		std::string finalPath;
@@ -1621,6 +1690,18 @@ void UserInterface::_drawFileDialog(SceneManager& scene, OrbitCamera& camera)
 					ShowStatusMessage("Exported COLLADA DAE: " + SceneManager::ExtractFileName(daePath));
 				else
 					ShowStatusMessage("Failed to export DAE: " + SceneManager::ExtractFileName(daePath), 4.0f, true);
+			}
+			else if (m_fileDialog.target == DIALOG_EXPORT_FBX)
+			{
+				std::string fbxPath = finalPath;
+				if (fbxPath.length() < 4 || fbxPath.substr(fbxPath.length() - 4) != ".fbx")
+				{
+					fbxPath += ".fbx";
+				}
+				if (scene.ExportToFBX(fbxPath, true))
+					ShowStatusMessage("Exported Autodesk FBX: " + SceneManager::ExtractFileName(fbxPath));
+				else
+					ShowStatusMessage("Failed to export FBX: " + SceneManager::ExtractFileName(fbxPath), 4.0f, true);
 			}
 		}
 
