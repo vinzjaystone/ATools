@@ -21,6 +21,7 @@ set(SOURCES
     src/model/ModelMng.cpp
     src/model/SceneManager.cpp
     src/model/GltfExporter.cpp
+    src/model/DaeExporter.cpp
     src/model/FolderScanner.cpp
     src/viewer/Camera.cpp
     src/viewer/Renderer.cpp

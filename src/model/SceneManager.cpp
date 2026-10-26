@@ -1,5 +1,6 @@
 #include "SceneManager.h"
 #include "GltfExporter.h"
+#include "DaeExporter.h"
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
@@ -738,6 +739,15 @@ bool SceneManager::ExportToGLTF(const std::string& filepath, bool exportAllAnima
 	opts.embedTextures = true;
 	opts.exportCompositeScene = true;
 	return GltfExporter::ExportGLB(filepath, *this, opts);
+}
+
+bool SceneManager::ExportToDAE(const std::string& filepath, bool exportAllAnimations) const
+{
+	DaeExportOptions opts;
+	opts.exportAllAnimations = exportAllAnimations;
+	opts.exportCompositeScene = true;
+	opts.copyTextures = true;
+	return DaeExporter::ExportDAE(filepath, *this, opts);
 }
 
 void SceneManager::SyncBones()
