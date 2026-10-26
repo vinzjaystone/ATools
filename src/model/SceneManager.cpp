@@ -1,6 +1,7 @@
 #include "SceneManager.h"
 #include "GltfExporter.h"
 #include "DaeExporter.h"
+#include "FbxExporter.h"
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
@@ -748,6 +749,15 @@ bool SceneManager::ExportToDAE(const std::string& filepath, bool exportAllAnimat
 	opts.exportCompositeScene = true;
 	opts.copyTextures = true;
 	return DaeExporter::ExportDAE(filepath, *this, opts);
+}
+
+bool SceneManager::ExportToFBX(const std::string& filepath, bool exportAllAnimations) const
+{
+	FbxExportOptions opts;
+	opts.exportAllAnimations = exportAllAnimations;
+	opts.exportCompositeScene = true;
+	opts.copyTextures = true;
+	return FbxExporter::ExportFBX(filepath, *this, opts);
 }
 
 void SceneManager::SyncBones()

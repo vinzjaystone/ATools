@@ -20,7 +20,8 @@ enum EFileDialogTarget
 	DIALOG_OPEN_SKELETON,
 	DIALOG_SELECT_FOLDER,
 	DIALOG_EXPORT_GLTF,
-	DIALOG_EXPORT_DAE
+	DIALOG_EXPORT_DAE,
+	DIALOG_EXPORT_FBX
 };
 
 struct FileDialogState
@@ -93,9 +94,14 @@ private:
 	char m_texNameBuffer[256];
 	bool m_editingTexture;
 
+	// Export dropdown menu
+	bool m_exportMenuOpen;
+	Rectangle m_exportMenuRect;
+
 	void _initTheme();
 	void _updateLayout(int screenWidth, int screenHeight, bool hasAnimation);
 	void _drawTopBar(SceneManager& scene, OrbitCamera& camera, RenderSettings& settings);
+	void _drawExportMenu(SceneManager& scene);
 
 	void _drawLeftPanel(SceneManager& scene, OrbitCamera& camera, RenderSettings& settings);
 	void _drawLibraryTab(SceneManager& scene, OrbitCamera& camera);
